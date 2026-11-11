@@ -1,6 +1,7 @@
-import { Lightbulb, Pencil } from "lucide-react";
+import { AlertCircle, Lightbulb, Loader2, Pencil, RefreshCw } from "lucide-react";
 import { BackButton, Field } from "@/components/flow-shared";
 import type { FlowState, TopicSuggestion } from "@/lib/flow-types";
+import type { TopicsResult } from "@/lib/research-types";
 import type { SampleBusiness } from "@/lib/sample-data";
 
 export function TopicsStep({
@@ -14,6 +15,11 @@ export function TopicsStep({
   onChoose,
   onDescChange,
   onBack,
+  isLive,
+  topicsPhase,
+  topicsResult,
+  topicsError,
+  onRetryTopics,
 }: {
   state: FlowState;
   business?: SampleBusiness | undefined;
@@ -25,23 +31,48 @@ export function TopicsStep({
   onChoose: (title: string, isCustom: boolean) => void;
   onDescChange: (v: string) => void;
   onBack: () => void;
+  isLive: boolean;
+  topicsPhase: "idle" | "loading" | "done";
+  topicsResult: TopicsResult | null;
+  topicsError: string | null;
+  onRetryTopics: () => void;
 }) {
-  const needsDescription = !state.matchedDomain;
+  const loading = isLive && topicsPhase === "loading";
+  const needsDescription =
+    isLive &&
+    !state.matchedDomain &&
+    (topicsResult?.needsDescription ?? false) &&
+    (topicsResult?.topics?.length ?? 0) === 0;
   const descriptionReady = state.businessDescription.trim().length > 0;
 
   return (
     <section className="space-y-4">
       <div className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-7">
         <h2 className="text-lg font-bold text-foreground sm:text-xl">
-          {needsDescription
-            ? "We couldn't read that site — tell us in one sentence"
+          {isLive
+            ? loading
+              ? "Researching topics for your business…"
+              : needsDescription
+                ? "We couldn't read that site — tell us in one sentence"
+                : `Two topics for ${state.businessName}`
             : `Two topics for ${business?.businessName ?? state.businessName}`}
         </h2>
         <p className="mt-1.5 text-sm text-muted-foreground">
-          {needsDescription
-            ? "No problem. Describe what your business does and we'll suggest topics from that instead."
+          {isLive
+            ? loading
+              ? "Reading your website and drafting two business-specific topic ideas."
+              : needsDescription
+                ? "No problem. Describe what your business does and we'll suggest topics from that instead."
+                : "Pick one to draft three post ideas, or enter your own topic."
             : "Pick one to draft three post ideas, or enter your own topic."}
         </p>
+
+        {isLive && !loading && (
+          <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-accent/60 bg-accent/15 px-2.5 py-1 text-[11px] font-medium text-primary">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+            Live research
+          </span>
+        )}
 
         {needsDescription && (
           <div className="mt-5">
@@ -55,36 +86,83 @@ export function TopicsStep({
                 className="w-full resize-none rounded-lg border border-input bg-background px-3 py-3 text-base text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-ring"
               />
             </Field>
+            <button
+              type="button"
+              disabled={!descriptionReady}
+              onClick={onRetryTopics}
+              className="mt-3 w-full rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+            >
+              Suggest topics from my description
+            </button>
           </div>
         )}
       </div>
 
-      {/* Topic cards — disabled until description is ready on the unreadable path */}
-      <div
-        className={[
-          "space-y-3 transition-opacity",
-          needsDescription && !descriptionReady ? "pointer-events-none opacity-40" : "opacity-100",
-        ].join(" ")}
-      >
-        {topics.map((t) => (
-          <button
-            key={t.title}
-            type="button"
-            onClick={() => onChoose(t.title, false)}
-            className="block w-full rounded-2xl border border-border bg-card p-5 text-left shadow-sm transition-all hover:border-primary hover:shadow-md"
-          >
-            <div className="flex items-start gap-3">
-              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/40 text-primary">
-                <Lightbulb className="h-4 w-4" />
-              </span>
-              <div>
-                <p className="font-semibold text-foreground">{t.title}</p>
-                <p className="mt-1 text-sm text-muted-foreground">{t.blurb}</p>
-              </div>
+      {/* Setup / fallback / error notice (never raw provider errors) */}
+      {isLive && !loading && (topicsResult?.setup || topicsError) && (
+        <div className="rounded-2xl border border-accent/60 bg-accent/10 p-4">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                {topicsResult?.setup
+                  ? "Live research isn't connected yet"
+                  : "Couldn't generate live topics"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {topicsError ??
+                  topicsResult?.note ??
+                  "Showing sample-style topics so you can preview the full flow."}
+              </p>
             </div>
-          </button>
-        ))}
-      </div>
+          </div>
+        </div>
+      )}
+
+      {loading && (
+        <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+          Researching your website…
+        </div>
+      )}
+
+      {!loading && topics.length > 0 && (
+        <>
+          <div className="space-y-3">
+            {topics.map((t) => (
+              <button
+                key={t.title}
+                type="button"
+                onClick={() => onChoose(t.title, false)}
+                className="block w-full rounded-2xl border border-border bg-card p-5 text-left shadow-sm transition-all hover:border-primary hover:shadow-md"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/40 text-primary">
+                    <Lightbulb className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <p className="font-semibold text-foreground">{t.title}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{t.blurb}</p>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {isLive && !needsDescription && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={onRetryTopics}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-primary"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Regenerate topics
+              </button>
+            </div>
+          )}
+        </>
+      )}
 
       {/* Custom topic entry */}
       <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
