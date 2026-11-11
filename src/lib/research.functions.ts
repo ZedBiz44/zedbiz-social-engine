@@ -27,6 +27,8 @@ const ideasSchema = z.object({
   topic: z.string().min(1).max(200),
   isCustom: z.boolean(),
   description: z.string().max(400).optional(),
+  businessSummary: z.string().max(600).optional(),
+  source: z.enum(["sample", "description", "live", "fallback"]).optional(),
 });
 
 export const researchIdeas = createServerFn({ method: "POST" })
@@ -38,5 +40,7 @@ export const researchIdeas = createServerFn({ method: "POST" })
       topic: data.topic,
       isCustom: data.isCustom,
       ...(data.description ? { description: data.description } : {}),
+      ...(data.businessSummary ? { businessSummary: data.businessSummary } : {}),
+      ...(data.source ? { source: data.source } : {}),
     }),
   );

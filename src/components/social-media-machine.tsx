@@ -21,12 +21,6 @@ import { researchTopics, researchIdeas } from "@/lib/research.functions";
 import type { IdeasResult, TopicsResult } from "@/lib/research-types";
 import { supabase } from "@/integrations/supabase/client";
 
-// The whole save/auth/claim/dashboard flow lives inside the single registered
-// "/" route. The prior /auth and /_authenticated/ route files were never picked
-// up by the router plugin (so the editor showed "No preview available"), so we
-// render the sign-in panel and the owner dashboard as in-route VIEWS driven by
-// a validated ?view=/?claim= search param and the existing Cloud session.
-
 const routeApi = getRouteApi("/");
 type View = "public" | "auth" | "dashboard";
 
@@ -35,17 +29,12 @@ type IdeasPhase = "idle" | "loading" | "done";
 
 export function SocialMediaMachine() {
   const navigate = useNavigate();
-  // Validated search params from the "/" route's validateSearch.
   const { view: urlView, claim: urlClaim } = routeApi.useSearch();
 
-  // In-route view state. Starts "public" on both server and client (no
-  // hydration mismatch); a browser-only effect reconciles it with the session
-  // + the ?view=/?claim= params.
   const [view, setView] = useState<View>("public");
   const [claimToken, setClaimToken] = useState<string | null>(null);
   const [signedIn, setSignedIn] = useState(false);
 
-  // Public flow state (persists across search-only navigations on "/").
   const [step, setStep] = useState<Step>("business");
   const [state, setState] = useState<FlowState>(EMPTY_STATE);
   const [customTopicDraft, setCustomTopicDraft] = useState("");
@@ -62,8 +51,6 @@ export function SocialMediaMachine() {
   const fetchTopics = useServerFn(researchTopics);
   const fetchIdeas = useServerFn(researchIdeas);
 
-  // Reconcile view + claim with the Cloud session whenever the URL params
-  // change (and once on mount). Browser-only: getUser() reads the session.
   useEffect(() => {
     let active = true;
     (async () => {
@@ -72,8 +59,6 @@ export function SocialMediaMachine() {
       const isSignedIn = Boolean(data.user);
       setSignedIn(isSignedIn);
       if (urlClaim) {
-        // Returning after email verification (even in another browser): claim
-        // the preserved ideas if signed in, else show the sign-in panel.
         setClaimToken(urlClaim);
         setView(isSignedIn ? "dashboard" : "auth");
       } else if (urlView === "dashboard") {
@@ -118,13 +103,11 @@ export function SocialMediaMachine() {
     e.preventDefault();
     if (!state.businessName.trim() || !state.website.trim()) return;
     const match = matchSampleBusiness(state.website);
-    // Explicit flow mode — NOT inferred from matchedDomain presence or a
-    // topic-id prefix. "sample" = fixture demo business; "live" = anything
-    // else (drives whether the ideas Server Function is called).
     patch({
       matchedDomain: match ? match.domain : null,
       mode: match ? "sample" : "live",
       businessDescription: "",
+      businessSummary: "",
       selectedTopic: null,
       isCustomTopic: false,
     });
@@ -152,6 +135,9 @@ export function SocialMediaMachine() {
         },
       });
       setTopicsResult(result);
+      if (result.businessSummary) {
+        patch({ businessSummary: result.businessSummary });
+      }
       setTopicsPhase("done");
     } catch {
       setTopicsError(
@@ -181,20 +167,28 @@ export function SocialMediaMachine() {
   );
 
   function chooseTopic(title: string, isCustom: boolean) {
-    patch({ selectedTopic: title, isCustomTopic: isCustom });
+    const activeSummary = topicsResult?.businessSummary || state.businessSummary;
+    patch({
+      selectedTopic: title,
+      isCustomTopic: isCustom,
+      ...(activeSummary ? { businessSummary: activeSummary } : {}),
+    });
     if (state.mode === "sample") {
       setIdeasResult(null);
       setIdeasPhase("idle");
       setStep("ideas");
     } else {
-      void runLiveIdeas(title, isCustom);
+      void runLiveIdeas(title, isCustom, activeSummary);
       setStep("ideas");
     }
   }
 
-  async function runLiveIdeas(topic: string, isCustom: boolean) {
+  async function runLiveIdeas(topic: string, isCustom: boolean, summaryOverride?: string) {
     setIdeasPhase("loading");
     setIdeasError(null);
+    const activeSummary = summaryOverride || topicsResult?.businessSummary || state.businessSummary;
+    const activeSource = topicsResult?.source === "live" ? "live" : "description";
+
     try {
       const result = await fetchIdeas({
         data: {
@@ -205,6 +199,8 @@ export function SocialMediaMachine() {
           ...(state.businessDescription.trim()
             ? { description: state.businessDescription.trim() }
             : {}),
+          ...(activeSummary ? { businessSummary: activeSummary } : {}),
+          source: activeSource,
         },
       });
       setIdeasResult(result);
@@ -222,21 +218,29 @@ export function SocialMediaMachine() {
     if (state.mode === "sample" && business) {
       return business.ideasByTopic[state.selectedTopic] ?? [];
     }
-    // Accept VALIDATED model output from either a live (website-text) or a
-    // description-grounded request. Never bypass it for generic templates.
     if (
       (ideasResult?.source === "live" || ideasResult?.source === "description") &&
       ideasResult.ideas.length > 0
     ) {
       return ideasResult.ideas;
     }
-    return buildGenericIdeas(state.businessDescription, state.selectedTopic);
-  }, [state.selectedTopic, state.mode, business, ideasResult, state.businessDescription]);
+    return buildGenericIdeas(
+      state.businessSummary || state.businessDescription,
+      state.selectedTopic,
+    );
+  }, [
+    state.selectedTopic,
+    state.mode,
+    business,
+    ideasResult,
+    state.businessSummary,
+    state.businessDescription,
+  ]);
 
   const showLiveTopicsBadge = topicsResult?.source === "live";
-  const showLiveIdeasBadge = ideasResult?.source === "live";
+  const showLiveIdeasBadge = ideasResult?.source === "live" || topicsResult?.source === "live";
   const showDescTopicsBadge = topicsResult?.source === "description";
-  const showDescIdeasBadge = ideasResult?.source === "description";
+  const showDescIdeasBadge = ideasResult?.source === "description" && !showLiveIdeasBadge;
   const isLiveFlow = state.mode === "live";
 
   function copyIdea(idea: PostIdea, index: number) {

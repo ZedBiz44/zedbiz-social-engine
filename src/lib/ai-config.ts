@@ -29,8 +29,8 @@ export const THROTTLE_MS = 8000;
 export const CACHE_TTL_MS = 5 * 60 * 1000;
 
 // --- Website fetch bounds ---
-export const FETCH_TIMEOUT_MS = 8000;
-export const FETCH_MAX_BYTES = 256 * 1024; // 256KB raw response body
-export const FETCH_MAX_REDIRECTS = 3;
-/** Max chars of extracted page text sent to the model. */
+export const FETCH_TIMEOUT_MS = 30000;
+export const WEB_FETCH_MAX_CONTENT_TOKENS = 1800;
+export const WEB_FETCH_MAX_USES = 1;
+export const WEB_FETCH_ENGINE = "openrouter";
 export const WEBSITE_TEXT_CHARS = 6000;

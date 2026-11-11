@@ -17,6 +17,8 @@ export type FlowState = {
   mode: FlowMode;
   /** Set when the site could not be read — visitor supplies a description. */
   businessDescription: string;
+  /** Extracted short business summary from openrouter:web_fetch website text. */
+  businessSummary: string;
   selectedTopic: string | null;
   /** Whether the selected topic was a custom (visitor-entered) one. */
   isCustomTopic: boolean;
@@ -28,6 +30,7 @@ export const EMPTY_STATE: FlowState = {
   matchedDomain: null,
   mode: "sample",
   businessDescription: "",
+  businessSummary: "",
   selectedTopic: null,
   isCustomTopic: false,
 };
@@ -44,6 +47,11 @@ export const SAMPLE_PREVIEW: {
   businessName: string;
   website: string;
 }[] = [
+  {
+    label: "ZedBiz Services (Live site)",
+    businessName: "ZedBiz",
+    website: "https://zedbiz.com/services",
+  },
   {
     label: "Maple Crust Bakery",
     businessName: "Maple Crust Bakery",
