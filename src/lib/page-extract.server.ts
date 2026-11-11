@@ -100,10 +100,12 @@ export async function extractPageText(rawWebsite: string): Promise<ExtractResult
   try {
     const res = await fetch(target, {
       method: "GET",
-      // "follow" lets the reader origin settle any 3xx on its own host; we
-      // still require data.url to match the requested hostname afterwards, so
-      // a redirect to an unrelated host is rejected by the host check.
-      redirect: "follow",
+      // "error" keeps the boundary fixed: any HTTP redirect on our side
+      // aborts the call. r.jina.ai follows the target URL itself; we do not
+      // follow intermediate redirects of the reader endpoint. If the
+      // reader times out or is unreachable, the caller falls back to the
+      // business-description path (OpenRouter generation works independently).
+      redirect: "error",
       signal: controller.signal,
       headers: {
         accept: "application/json",
@@ -151,14 +153,17 @@ export async function extractPageText(rawWebsite: string): Promise<ExtractResult
 
     return parseJinaResponse(raw, cleanUrl, valResult.normalizedHost, valResult.normalizedDomain);
   } catch {
-    // The outbound reader call itself could not complete (network error,
-    // redirect rejected, or timeout). This is a transport/backend problem,
-    // NOT a problem with the specific website — distinguish it so the UI can
-    // say "backend unavailable" instead of "couldn't read that site".
+    // The outbound reader call could not complete (network error, redirect
+    // rejected, or timeout). r.jina.ai is an external dependency; when it is
+    // unreachable the caller falls back to the business-description path
+    // (OpenRouter generation works independently of the reader). We still
+    // surface this as a website-read failure (needsDescription) rather than a
+    // backend-unavailable state, because the app's own server function is
+    // fine — only the external reader is down.
     return {
       ok: false,
       reason: "Reader request failed or timed out",
-      kind: "backend-unavailable" as const,
+      kind: "website-unreadable" as const,
     };
   } finally {
     clearTimeout(timer);
