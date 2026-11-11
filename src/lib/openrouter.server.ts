@@ -32,6 +32,9 @@ async function callOpenRouter(
       headers: {
         authorization: `Bearer ${apiKey}`,
         "content-type": "application/json",
+        // OpenRouter usage attribution — these are public, publishable values.
+        "HTTP-Referer": "https://zedsocial.app",
+        "X-Title": "ZedSocial Social Media Machine",
       },
       body: JSON.stringify({
         model,

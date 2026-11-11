@@ -47,8 +47,12 @@ export function SocialMediaMachine() {
     e.preventDefault();
     if (!state.businessName.trim() || !state.website.trim()) return;
     const match = matchSampleBusiness(state.website);
+    // Explicit flow mode — NOT inferred from matchedDomain presence or a
+    // topic-id prefix. "sample" = fixture demo business; "live" = anything
+    // else (drives whether the ideas Server Function is called).
     patch({
       matchedDomain: match ? match.domain : null,
+      mode: match ? "sample" : "live",
       businessDescription: "",
       selectedTopic: null,
       isCustomTopic: false,
@@ -111,13 +115,16 @@ export function SocialMediaMachine() {
 
   function chooseTopic(title: string, isCustom: boolean) {
     patch({ selectedTopic: title, isCustomTopic: isCustom });
-    if (state.matchedDomain) {
-      // Sample business — use the labelled sample ideas immediately.
+    if (state.mode === "sample") {
+      // Fixture sample business — use the labelled sample ideas immediately,
+      // no Server Function call.
       setIdeasResult(null);
       setIdeasPhase("idle");
       setStep("ideas");
     } else {
-      // Live — kick off idea generation.
+      // Live flow — EVERY topic (suggested or custom) in a successful
+      // description-based flow calls the ideas Server Function with the
+      // current business name, the selected topic, and the description.
       void runLiveIdeas(title, isCustom);
       setStep("ideas");
     }
@@ -150,23 +157,36 @@ export function SocialMediaMachine() {
 
   const ideas: PostIdea[] = useMemo(() => {
     if (!state.selectedTopic) return [];
-    if (state.matchedDomain && business) {
+    if (state.mode === "sample" && business) {
       return business.ideasByTopic[state.selectedTopic] ?? [];
     }
-    if (ideasResult?.source === "live" && ideasResult.ideas.length > 0) {
+    // Accept VALIDATED model output from either a live (website-text) or a
+    // description-grounded request. The previous bug only accepted
+    // source === "live", so a successful description-based generation
+    // (source === "description") was bypassed here and generic templates
+    // were shown under the "Based on your description" badge.
+    if (
+      (ideasResult?.source === "live" || ideasResult?.source === "description") &&
+      ideasResult.ideas.length > 0
+    ) {
       return ideasResult.ideas;
     }
+    // No validated model output yet (loading, failure, or not connected) —
+    // show clearly-labelled fallback templates so the preview still works.
     return buildGenericIdeas(state.businessDescription, state.selectedTopic);
-  }, [state.selectedTopic, state.matchedDomain, business, ideasResult, state.businessDescription]);
+  }, [state.selectedTopic, state.mode, business, ideasResult, state.businessDescription]);
 
-  const liveIdeasSource = ideasResult?.source === "live" || ideasResult?.source === "description";
-  // "Live research" badge is shown only when a real model request succeeded
-  // and was grounded in website text. Description-based results get their own
-  // "Based on your description" label; fallback/sample never show "Live".
+  // Badges are derived from the ACTUAL topics/ideas response source — never
+  // from a guessed topic-id prefix or the presence of a sample domain.
+  // "Live research": real model request grounded in website text.
+  // "Based on your description": real model request grounded in the visitor's
+  //   one-sentence description. Both require validated model output.
+  // Fallback/sample results show the muted "Sample suggestions" label only.
   const showLiveTopicsBadge = topicsResult?.source === "live";
   const showLiveIdeasBadge = ideasResult?.source === "live";
   const showDescTopicsBadge = topicsResult?.source === "description";
   const showDescIdeasBadge = ideasResult?.source === "description";
+  const isLiveFlow = state.mode === "live";
 
   function copyIdea(idea: PostIdea, index: number) {
     const text = [
@@ -216,7 +236,7 @@ export function SocialMediaMachine() {
             onChoose={chooseTopic}
             onDescChange={(v) => patch({ businessDescription: v })}
             onBack={() => setStep("business")}
-            isLive={!state.matchedDomain}
+            isLive={isLiveFlow}
             showLiveBadge={showLiveTopicsBadge}
             showDescriptionBadge={showDescTopicsBadge}
             topicsPhase={topicsPhase}
@@ -235,7 +255,7 @@ export function SocialMediaMachine() {
             onCopy={copyIdea}
             onContinue={() => setStep("save")}
             onBack={() => setStep("topics")}
-            isLive={!state.matchedDomain}
+            isLive={isLiveFlow}
             showLiveBadge={showLiveIdeasBadge}
             showDescriptionBadge={showDescIdeasBadge}
             ideasPhase={ideasPhase}

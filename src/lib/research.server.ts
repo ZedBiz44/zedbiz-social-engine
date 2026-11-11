@@ -189,5 +189,8 @@ export async function researchIdeasServer(input: {
     };
   }
 
-  return { source: description.length >= 8 ? "description" : "live", ideas };
+  // Website fetching is disabled, so the model is grounded only in the
+  // visitor's description (the live flow always supplies one before topics
+  // generate). Reserve "live" for future website-text-grounded results.
+  return { source: "description", ideas };
 }

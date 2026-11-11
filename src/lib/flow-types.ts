@@ -2,11 +2,19 @@ import type { PostIdea, TopicSuggestion } from "@/lib/sample-data";
 
 export type Step = "business" | "topics" | "ideas" | "save";
 
+export type FlowMode = "sample" | "live";
+
 export type FlowState = {
   businessName: string;
   website: string;
   /** Set when the website matched a sample business. */
   matchedDomain: string | null;
+  /**
+   * Explicit flow mode — "sample" for the fixture demo businesses, "live" for
+   * any other site. Drives whether the ideas Server Function is called. This
+   * is NOT inferred from matchedDomain presence or a topic-id prefix.
+   */
+  mode: FlowMode;
   /** Set when the site could not be read — visitor supplies a description. */
   businessDescription: string;
   selectedTopic: string | null;
@@ -18,6 +26,7 @@ export const EMPTY_STATE: FlowState = {
   businessName: "",
   website: "",
   matchedDomain: null,
+  mode: "sample",
   businessDescription: "",
   selectedTopic: null,
   isCustomTopic: false,
