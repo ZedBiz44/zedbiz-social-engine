@@ -26,7 +26,6 @@ export function SocialMediaMachine() {
   const [customTopicDraft, setCustomTopicDraft] = useState("");
   const [showCustomTopic, setShowCustomTopic] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
-  const [saved, setSaved] = useState(false);
 
   // Live research state
   const [topicsPhase, setTopicsPhase] = useState<TopicsPhase>("idle");
@@ -204,7 +203,6 @@ export function SocialMediaMachine() {
     setCustomTopicDraft("");
     setShowCustomTopic(false);
     setCopiedIndex(null);
-    setSaved(false);
     setStep("business");
     setTopicsPhase("idle");
     setTopicsResult(null);
@@ -268,8 +266,6 @@ export function SocialMediaMachine() {
             state={state}
             business={business}
             ideas={ideas}
-            saved={saved}
-            onSave={() => setSaved(true)}
             onReset={reset}
             onBack={() => setStep("ideas")}
           />

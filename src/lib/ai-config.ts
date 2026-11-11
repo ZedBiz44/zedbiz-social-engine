@@ -19,6 +19,8 @@ export const OPENROUTER_KEY_ENV = "OPENROUTER_API_KEY";
 // --- Output token caps (modest; suitable for editor-only testing) ---
 export const MAX_TOKENS_TOPICS = 400;
 export const MAX_TOKENS_IDEAS = 900;
+/** Output token cap for draft generation (caption + visual brief). */
+export const MAX_TOKENS_DRAFT = 1200;
 
 // --- Throttling + dedupe (in-memory, per worker instance) ---
 /** Minimum interval between calls for the same key. */

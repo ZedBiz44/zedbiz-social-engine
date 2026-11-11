@@ -7,11 +7,7 @@
 //
 // Never imported from client code (filename is *.server.ts).
 
-import {
-  AI_MODEL,
-  MAX_TOKENS_DRAFT,
-  OPENROUTER_ENDPOINT,
-} from "@/lib/ai-config";
+import { AI_MODEL, MAX_TOKENS_DRAFT, OPENROUTER_ENDPOINT } from "@/lib/ai-config";
 
 type ORMessage = { role: "system" | "user"; content: string };
 

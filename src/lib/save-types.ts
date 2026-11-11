@@ -2,47 +2,15 @@
 //
 // These describe ONLY public fields — never raw errors, secrets, claim-token
 // hashes, or internal pending records. Pending records are never exposed to
-// the browser; only a short opaque claim token (itself never persisted in the
-// browser either) is returned to the visitor.
+// the browser; only a short opaque one-time claim token (itself never
+// persisted in the browser) is returned to the visitor.
 
 import type { PostIdea, TopicSuggestion } from "@/lib/sample-data";
 
-/** A saved set of three ideas owned by a signed-in user. */
-export type SavedIdeaSet = {
-  id: string;
-  /** ISO timestamp of creation. */
-  createdAt: string;
-  businessName: string;
-  website: string;
-  topic: string;
-  isCustomTopic: boolean;
-  description: string;
-  /** The exact three ideas preserved at save time. */
-  ideas: PostIdea[];
-  /** Index (0..2) of the idea the owner selected to draft. */
-  selectedIdeaIndex: number;
-};
-
-/** A draft built from one selected idea: an editable caption + visual brief. */
-export type Draft = {
-  id: string;
-  savedSetId: string;
-  /** ISO timestamp of last update. */
-  updatedAt: string;
-  /** Monotonic revision counter; approval applies to the current revision. */
-  revision: number;
-  platform: "facebook" | "instagram";
-  /** Editable caption text. */
-  caption: string;
-  /** Separate visual brief (image direction), editable. */
-  visualBrief: string;
-  /** True when the owner approved the CURRENT revision. Editing clears it. */
-  approved: boolean;
-};
-
-/** What the visitor sees after creating a pending record. No internal id. */
+/** Result of creating a pending claim (pre-sign-in). */
 export type PendingCreated = {
-  /** Opaque one-time claim token (sent to email in production; shown in preview). */
+  ok: true;
+  /** Opaque one-time claim token (used to claim after sign-in). */
   claimToken: string;
   /** Masked email, e.g. "j***@example.com" — never the full address. */
   emailMasked: string;
@@ -50,21 +18,58 @@ export type PendingCreated = {
   expiresInSeconds: number;
 };
 
-/** Result of attempting to claim a pending record after sign-in. */
-export type ClaimResult =
-  | { ok: true; savedSetId: string }
-  | { ok: false; reason: "not_found" | "expired" | "email_mismatch" | "already_claimed" };
+export type PendingCreateError = {
+  ok: false;
+  reason: "invalid_email" | "rate_limited" | "insert_failed";
+};
 
-/** A demo account session (preview only — no real auth backend). */
-export type DemoSession = {
-  email: string;
-  emailConfirmed: boolean;
-} | null;
+export type PendingCreateResult = PendingCreated | PendingCreateError;
+
+/** Result of claiming a pending record after sign-in. */
+export type ClaimResult =
+  | {
+      ok: true;
+      ideas: PostIdea[];
+      selectedIdeaIndex: number;
+    }
+  | {
+      ok: false;
+      reason: "not_found" | "expired" | "email_mismatch" | "already_claimed";
+    };
+
+/** A saved set of three ideas owned by a signed-in user. */
+export type SavedIdeaSet = {
+  id: string;
+  createdAt: string;
+  businessName: string;
+  website: string;
+  topic: string;
+  isCustomTopic: boolean;
+  description: string;
+  ideas: PostIdea[];
+  selectedIdeaIndex: number;
+};
+
+/** A draft built from one selected idea: editable caption + visual brief. */
+export type Draft = {
+  id: string;
+  savedSetId: string;
+  updatedAt: string;
+  revision: number;
+  platform: "facebook" | "instagram";
+  caption: string;
+  visualBrief: string;
+  approved: boolean;
+};
 
 /** Public work list returned to a signed-in owner. */
 export type OwnerWork = {
   savedSets: SavedIdeaSet[];
   drafts: Draft[];
 };
+
+/** Result of generating a draft from a selected idea. */
+export type DraftGenResult =
+  { ok: true; draft: Draft } | { ok: false; reason: "setup" | "generation_failed"; note?: string };
 
 export type { PostIdea, TopicSuggestion };

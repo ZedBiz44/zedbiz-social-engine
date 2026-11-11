@@ -10,17 +10,162 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.18"
   }
   public: {
     Tables: {
-      [_ in never]: never
+      drafts: {
+        Row: {
+          approved: boolean
+          caption: string
+          id: string
+          owner_id: string
+          platform: string
+          revision: number
+          saved_set_id: string
+          updated_at: string
+          visual_brief: string
+        }
+        Insert: {
+          approved?: boolean
+          caption: string
+          id?: string
+          owner_id: string
+          platform: string
+          revision?: number
+          saved_set_id: string
+          updated_at?: string
+          visual_brief: string
+        }
+        Update: {
+          approved?: boolean
+          caption?: string
+          id?: string
+          owner_id?: string
+          platform?: string
+          revision?: number
+          saved_set_id?: string
+          updated_at?: string
+          visual_brief?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "drafts_saved_set_id_fkey"
+            columns: ["saved_set_id"]
+            isOneToOne: false
+            referencedRelation: "saved_idea_sets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pending_idea_claims: {
+        Row: {
+          business_name: string
+          claim_token_hash: string
+          claimed_at: string | null
+          claimed_by: string | null
+          created_at: string
+          description: string
+          email_key: string
+          expires_at: string
+          id: string
+          ideas: Json
+          is_custom_topic: boolean
+          selected_idea_index: number
+          topic: string
+          website: string
+        }
+        Insert: {
+          business_name: string
+          claim_token_hash: string
+          claimed_at?: string | null
+          claimed_by?: string | null
+          created_at?: string
+          description?: string
+          email_key: string
+          expires_at: string
+          id?: string
+          ideas: Json
+          is_custom_topic?: boolean
+          selected_idea_index?: number
+          topic: string
+          website: string
+        }
+        Update: {
+          business_name?: string
+          claim_token_hash?: string
+          claimed_at?: string | null
+          claimed_by?: string | null
+          created_at?: string
+          description?: string
+          email_key?: string
+          expires_at?: string
+          id?: string
+          ideas?: Json
+          is_custom_topic?: boolean
+          selected_idea_index?: number
+          topic?: string
+          website?: string
+        }
+        Relationships: []
+      }
+      saved_idea_sets: {
+        Row: {
+          business_name: string
+          created_at: string
+          description: string
+          id: string
+          ideas: Json
+          is_custom_topic: boolean
+          owner_id: string
+          selected_idea_index: number
+          topic: string
+          website: string
+        }
+        Insert: {
+          business_name: string
+          created_at?: string
+          description?: string
+          id?: string
+          ideas: Json
+          is_custom_topic?: boolean
+          owner_id: string
+          selected_idea_index?: number
+          topic: string
+          website: string
+        }
+        Update: {
+          business_name?: string
+          created_at?: string
+          description?: string
+          id?: string
+          ideas?: Json
+          is_custom_topic?: boolean
+          owner_id?: string
+          selected_idea_index?: number
+          topic?: string
+          website?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      claim_pending_ideas: {
+        Args: {
+          _claim_token_hash: string
+          _email_key: string
+          _user_id: string
+        }
+        Returns: {
+          id: string
+          ideas: Json
+          selected_idea_index: number
+        }[]
+      }
+      normalize_email: { Args: { _email: string }; Returns: string }
     }
     Enums: {
       [_ in never]: never
