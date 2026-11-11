@@ -1,17 +1,30 @@
+// Public sign-in / sign-up panel (email/password, email verification).
+//
+// Rendered INSIDE the working "/" route as a view (not a separate route file),
+// because the router plugin had not registered the prior /auth and
+// /_authenticated/ modules in the generated route tree, so the editor showed
+// "No preview available". This keeps everything on the single registered route.
+//
+// After sign-in we stay on "/" and switch the view to the dashboard. If a claim
+// token is present (returned after email verification, even in another
+// browser), it is read from the validated ?claim= search param by the parent.
+
 import { useState } from "react";
-import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Field } from "@/components/flow-shared";
+import type { PostIdea } from "@/lib/sample-data";
 
-// Public sign-in / sign-up route. Email/password only. New accounts get an
-// email verification link; existing accounts sign in. After sign-in we check
-// for a pending claim token in the URL (so a returning visitor who verified
-// their email in another browser can claim their preserved ideas).
-export function AuthPage() {
-  const navigate = useNavigate();
-  const search = useSearch({ strict: false }) as { claim?: string };
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+export type ViewMode = "signin" | "signup";
+
+export function AuthPanel({
+  claimToken,
+  onSignedIn,
+}: {
+  claimToken?: string | null;
+  onSignedIn: (opts: { claimToken?: string | null }) => void;
+}) {
+  const [mode, setMode] = useState<ViewMode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -46,12 +59,10 @@ export function AuthPage() {
           setError(signInError.message);
           return;
         }
-        // Signed in. If there's a pending claim token, go claim it; else dashboard.
-        if (search.claim) {
-          navigate({ to: "/_authenticated/", search: { claim: search.claim } });
-        } else {
-          navigate({ to: "/_authenticated/" });
-        }
+        // Signed in — hand control back to the parent. If a claim token is
+        // waiting, pass it along so the dashboard can claim the preserved
+        // ideas. Works across browsers because the token travels in the URL.
+        onSignedIn({ claimToken: claimToken ?? null });
       }
     } finally {
       setLoading(false);
@@ -70,7 +81,7 @@ export function AuthPage() {
             : "Create an account to save ideas and drafts. We'll send a verification link to your email."}
         </p>
 
-        {search.claim && (
+        {claimToken && (
           <div className="mt-4 rounded-xl border border-accent/60 bg-accent/15 p-3 text-xs text-foreground">
             Your ideas are waiting. Sign in with the email you used to save them to claim them.
           </div>
@@ -155,13 +166,10 @@ export function AuthPage() {
             </>
           )}
         </div>
-
-        <div className="mt-6 text-center">
-          <Link to="/" className="text-xs text-muted-foreground hover:text-primary">
-            ← Back to the idea generator
-          </Link>
-        </div>
       </div>
     </main>
   );
 }
+
+// Re-export for callers that only want the PostIdea type via this module path.
+export type { PostIdea };

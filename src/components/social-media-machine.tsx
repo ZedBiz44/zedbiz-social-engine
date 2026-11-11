@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
   SAMPLE_BUSINESSES,
@@ -14,20 +15,43 @@ import { BusinessStep } from "@/components/steps/business-step";
 import { TopicsStep } from "@/components/steps/topics-step";
 import { IdeasStep } from "@/components/steps/ideas-step";
 import { SaveStep } from "@/components/steps/save-step";
+import { AuthPanel } from "@/components/auth-panel";
+import { OwnerDashboard } from "@/components/owner-dashboard";
 import { researchTopics, researchIdeas } from "@/lib/research.functions";
 import type { IdeasResult, TopicsResult } from "@/lib/research-types";
+import { supabase } from "@/integrations/supabase/client";
+
+// The whole save/auth/claim/dashboard flow lives inside the single registered
+// "/" route. The prior /auth and /_authenticated/ route files were never picked
+// up by the router plugin (so the editor showed "No preview available"), so we
+// render the sign-in panel and the owner dashboard as in-route VIEWS driven by
+// a validated ?view=/?claim= search param and the existing Cloud session.
+
+const routeApi = getRouteApi("/");
+type View = "public" | "auth" | "dashboard";
 
 type TopicsPhase = "idle" | "loading" | "done";
 type IdeasPhase = "idle" | "loading" | "done";
 
 export function SocialMediaMachine() {
+  const navigate = useNavigate();
+  // Validated search params from the "/" route's validateSearch.
+  const { view: urlView, claim: urlClaim } = routeApi.useSearch();
+
+  // In-route view state. Starts "public" on both server and client (no
+  // hydration mismatch); a browser-only effect reconciles it with the session
+  // + the ?view=/?claim= params.
+  const [view, setView] = useState<View>("public");
+  const [claimToken, setClaimToken] = useState<string | null>(null);
+  const [signedIn, setSignedIn] = useState(false);
+
+  // Public flow state (persists across search-only navigations on "/").
   const [step, setStep] = useState<Step>("business");
   const [state, setState] = useState<FlowState>(EMPTY_STATE);
   const [customTopicDraft, setCustomTopicDraft] = useState("");
   const [showCustomTopic, setShowCustomTopic] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
-  // Live research state
   const [topicsPhase, setTopicsPhase] = useState<TopicsPhase>("idle");
   const [topicsResult, setTopicsResult] = useState<TopicsResult | null>(null);
   const [topicsError, setTopicsError] = useState<string | null>(null);
@@ -37,6 +61,51 @@ export function SocialMediaMachine() {
 
   const fetchTopics = useServerFn(researchTopics);
   const fetchIdeas = useServerFn(researchIdeas);
+
+  // Reconcile view + claim with the Cloud session whenever the URL params
+  // change (and once on mount). Browser-only: getUser() reads the session.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      if (!active) return;
+      const isSignedIn = Boolean(data.user);
+      setSignedIn(isSignedIn);
+      if (urlClaim) {
+        // Returning after email verification (even in another browser): claim
+        // the preserved ideas if signed in, else show the sign-in panel.
+        setClaimToken(urlClaim);
+        setView(isSignedIn ? "dashboard" : "auth");
+      } else if (urlView === "dashboard") {
+        setView(isSignedIn ? "dashboard" : "public");
+      } else if (urlView === "auth") {
+        setView(isSignedIn ? "dashboard" : "auth");
+      } else {
+        setView("public");
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [urlView, urlClaim]);
+
+  function goAuth(token: string) {
+    setClaimToken(token);
+    void navigate({ to: "/", search: { view: "auth", claim: token } });
+  }
+
+  function goDashboard(token?: string | null) {
+    setClaimToken(token ?? null);
+    void navigate({
+      to: "/",
+      search: { view: "dashboard", ...(token ? { claim: token } : {}) },
+    });
+  }
+
+  function goPublic() {
+    reset();
+    void navigate({ to: "/", search: {} });
+  }
 
   function patch(p: Partial<FlowState>) {
     setState((s) => ({ ...s, ...p }));
@@ -57,12 +126,10 @@ export function SocialMediaMachine() {
       isCustomTopic: false,
     });
     if (match) {
-      // Sample business — show the labelled sample topics directly.
       setTopicsResult(null);
       setTopicsPhase("idle");
       setStep("topics");
     } else {
-      // Unmatched site — kick off live research for topics.
       void runLiveTopics();
       setStep("topics");
     }
@@ -84,7 +151,6 @@ export function SocialMediaMachine() {
       setTopicsResult(result);
       setTopicsPhase("done");
     } catch {
-      // Preserve inputs; show a clear, generic message (never raw errors).
       setTopicsError(
         "We couldn't research topics right now. Enter your own topic below, or try again in a moment.",
       );
@@ -97,7 +163,6 @@ export function SocialMediaMachine() {
       const biz = SAMPLE_BUSINESSES.find((b) => b.domain === state.matchedDomain);
       return biz?.topics ?? [];
     }
-    // Live research result, otherwise generic fallback.
     if (topicsResult?.topics && topicsResult.topics.length > 0) {
       return topicsResult.topics;
     }
@@ -115,15 +180,10 @@ export function SocialMediaMachine() {
   function chooseTopic(title: string, isCustom: boolean) {
     patch({ selectedTopic: title, isCustomTopic: isCustom });
     if (state.mode === "sample") {
-      // Fixture sample business — use the labelled sample ideas immediately,
-      // no Server Function call.
       setIdeasResult(null);
       setIdeasPhase("idle");
       setStep("ideas");
     } else {
-      // Live flow — EVERY topic (suggested or custom) in a successful
-      // description-based flow calls the ideas Server Function with the
-      // current business name, the selected topic, and the description.
       void runLiveIdeas(title, isCustom);
       setStep("ideas");
     }
@@ -160,27 +220,16 @@ export function SocialMediaMachine() {
       return business.ideasByTopic[state.selectedTopic] ?? [];
     }
     // Accept VALIDATED model output from either a live (website-text) or a
-    // description-grounded request. The previous bug only accepted
-    // source === "live", so a successful description-based generation
-    // (source === "description") was bypassed here and generic templates
-    // were shown under the "Based on your description" badge.
+    // description-grounded request. Never bypass it for generic templates.
     if (
       (ideasResult?.source === "live" || ideasResult?.source === "description") &&
       ideasResult.ideas.length > 0
     ) {
       return ideasResult.ideas;
     }
-    // No validated model output yet (loading, failure, or not connected) —
-    // show clearly-labelled fallback templates so the preview still works.
     return buildGenericIdeas(state.businessDescription, state.selectedTopic);
   }, [state.selectedTopic, state.mode, business, ideasResult, state.businessDescription]);
 
-  // Badges are derived from the ACTUAL topics/ideas response source — never
-  // from a guessed topic-id prefix or the presence of a sample domain.
-  // "Live research": real model request grounded in website text.
-  // "Based on your description": real model request grounded in the visitor's
-  //   one-sentence description. Both require validated model output.
-  // Fallback/sample results show the muted "Sample suggestions" label only.
   const showLiveTopicsBadge = topicsResult?.source === "live";
   const showLiveIdeasBadge = ideasResult?.source === "live";
   const showDescTopicsBadge = topicsResult?.source === "description";
@@ -210,6 +259,26 @@ export function SocialMediaMachine() {
     setIdeasPhase("idle");
     setIdeasResult(null);
     setIdeasError(null);
+  }
+
+  if (view === "auth") {
+    return (
+      <div className="min-h-screen bg-background text-foreground">
+        <Header />
+        <AuthPanel claimToken={claimToken} onSignedIn={(o) => goDashboard(o.claimToken)} />
+        <SampleBanner />
+      </div>
+    );
+  }
+
+  if (view === "dashboard") {
+    return (
+      <div className="min-h-screen bg-background text-foreground">
+        <Header />
+        <OwnerDashboard claimToken={claimToken} onExit={goPublic} />
+        <SampleBanner />
+      </div>
+    );
   }
 
   return (
@@ -266,6 +335,9 @@ export function SocialMediaMachine() {
             state={state}
             business={business}
             ideas={ideas}
+            signedIn={signedIn}
+            onEnterAuth={goAuth}
+            onClaimReady={(token) => goDashboard(token)}
             onReset={reset}
             onBack={() => setStep("ideas")}
           />

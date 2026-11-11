@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearch, useNavigate } from "@tanstack/react-router";
-import { useServerFn } from "@tanstack/react-start";
-import { Check, ChevronLeft, Copy, Loader2, LogOut, Pencil, Plus, Trash2 } from "lucide-react";
+import { Loader2, LogOut, Plus, Trash2, Pencil, Copy, Check, ChevronLeft } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useServerFn } from "@tanstack/react-start";
 import {
   claimPendingIdeas,
   deleteSavedSet,
@@ -14,9 +13,17 @@ import {
 import type { Draft, DraftGenResult, OwnerWork, SavedIdeaSet } from "@/lib/save-types";
 import type { PostIdea } from "@/lib/sample-data";
 
-export function OwnerDashboard() {
-  const navigate = useNavigate();
-  const search = useSearch({ strict: false }) as { claim?: string };
+// Owner dashboard — rendered INSIDE the working "/" route as a view. Handles the
+// claim-after-sign-in using the validated ?claim= search param passed in by the
+// parent (SocialMediaMachine), not a separate /_authenticated/ route.
+
+export function OwnerDashboard({
+  claimToken,
+  onExit,
+}: {
+  claimToken?: string | null;
+  onExit: () => void;
+}) {
   const fetchWork = useServerFn(loadOwnerWork);
   const fetchClaim = useServerFn(claimPendingIdeas);
   const fetchDelete = useServerFn(deleteSavedSet);
@@ -40,28 +47,26 @@ export function OwnerDashboard() {
     }
   }
 
-  // Load work on mount.
+  // Load the signed-in user's work on mount.
   useEffect(() => {
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Claim-after-sign-in: if a claim token is in the URL, attempt to claim it
-  // once. Works across browsers (the token is in the URL, not the session).
+  // Claim-after-sign-in: if a claim token is present, attempt to claim it once.
+  // Works across browsers — the token travels in the URL, the verified email is
+  // read from the JWT server-side.
   useEffect(() => {
-    const token = search.claim;
-    if (!token) return;
+    if (!claimToken) return;
     let cancelled = false;
     (async () => {
       setClaimStatus("Claiming your saved ideas…");
       try {
-        const result = await fetchClaim({ data: { claimToken: token } });
+        const result = await fetchClaim({ data: { claimToken } });
         if (cancelled) return;
         if (result.ok) {
           setClaimStatus("Your ideas were saved to your account.");
           await refresh();
-          // Clear the token from the URL.
-          navigate({ to: "/_authenticated/", search: {} });
         } else {
           const map: Record<string, string> = {
             not_found:
@@ -72,7 +77,6 @@ export function OwnerDashboard() {
             already_claimed: "Those ideas were already claimed.",
           };
           setClaimStatus(map[result.reason] ?? "We couldn't claim your ideas.");
-          navigate({ to: "/_authenticated/", search: {} });
         }
       } catch {
         if (!cancelled) setClaimStatus("We couldn't claim your ideas right now.");
@@ -82,11 +86,11 @@ export function OwnerDashboard() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search.claim]);
+  }, [claimToken]);
 
   async function onSignOut() {
     await supabase.auth.signOut();
-    navigate({ to: "/" });
+    onExit();
   }
 
   async function onDelete(id: string) {
@@ -120,7 +124,9 @@ export function OwnerDashboard() {
     <main className="mx-auto w-full max-w-3xl px-4 pb-24 pt-6 sm:pt-10">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-bold text-foreground sm:text-xl">My saved ideas & drafts</h1>
+          <h1 className="text-lg font-bold text-foreground sm:text-xl">
+            My saved ideas &amp; drafts
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Everything here is saved to your account.
           </p>
@@ -146,12 +152,13 @@ export function OwnerDashboard() {
       )}
 
       <div className="mt-5">
-        <Link
-          to="/"
+        <button
+          type="button"
+          onClick={onExit}
           className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80"
         >
           <Plus className="h-4 w-4" /> Generate new ideas
-        </Link>
+        </button>
       </div>
 
       {activeSet ? (

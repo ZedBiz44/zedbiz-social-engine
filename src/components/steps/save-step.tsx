@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { Check, Loader2, Mail } from "lucide-react";
 import { BackButton, Field } from "@/components/flow-shared";
@@ -8,25 +7,38 @@ import type { PendingCreateResult } from "@/lib/save-types";
 import type { FlowState, PostIdea } from "@/lib/flow-types";
 import type { SampleBusiness } from "@/lib/sample-data";
 
+// Save step: choose the idea to draft + enter email, then preserve the exact
+// three ideas + selected idea in a short-lived pending record (server-side,
+// tied to the normalized email) and hand off to the auth or dashboard view.
+//
+// Stays on the single working "/" route: instead of navigating to a separate
+// /auth route (which the router plugin had not registered), it calls
+// onEnterAuth / onClaimReady so the parent swaps the in-route view.
+
 export function SaveStep({
   state,
   business,
   ideas,
+  signedIn,
+  onEnterAuth,
+  onClaimReady,
   onReset,
   onBack,
 }: {
   state: FlowState;
   business?: SampleBusiness | undefined;
   ideas: PostIdea[];
+  signedIn: boolean;
+  onEnterAuth: (claimToken: string) => void;
+  onClaimReady: (claimToken: string) => void;
   onReset: () => void;
   onBack: () => void;
 }) {
-  const navigate = useNavigate();
   const fetchCreatePending = useServerFn(createPendingClaim);
 
   const [selectedIdeaIndex, setSelectedIdeaIndex] = useState<number>(0);
   const [email, setEmail] = useState("");
-  const [phase, setPhase] = useState<"choose" | "email" | "pending" | "error">("choose");
+  const [phase, setPhase] = useState<"choose" | "pending" | "error">("choose");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [maskedEmail, setMaskedEmail] = useState<string | null>(null);
@@ -52,9 +64,14 @@ export function SaveStep({
       if (result.ok) {
         setMaskedEmail(result.emailMasked);
         setPhase("pending");
-        // Redirect to sign-in with the claim token so the visitor can claim
-        // after verifying their email (works across browsers — token is in URL).
-        navigate({ to: "/auth", search: { claim: result.claimToken } });
+        // Already signed in → go straight to the dashboard and claim the
+        // preserved ideas with the current session. Otherwise hand off to the
+        // sign-in panel (same route) so the visitor can verify their email.
+        if (signedIn) {
+          onClaimReady(result.claimToken);
+        } else {
+          onEnterAuth(result.claimToken);
+        }
       } else {
         if (result.reason === "rate_limited") {
           setError("Too many attempts — please wait a minute and try again.");
@@ -192,16 +209,19 @@ export function SaveStep({
             <Mail className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
             <div>
               <p className="text-sm font-semibold text-foreground">
-                Check your email to finish saving
+                {signedIn ? "Saving your ideas…" : "Check your email to finish saving"}
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                We've held onto your three ideas. Verify your email{" "}
-                <span className="font-medium text-foreground">{maskedEmail}</span> and sign in to
-                claim them and draft your post.
-              </p>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Taking you to the sign-in page… If you already have an account, just sign in with
-                this email.
+                We've held onto your three ideas.{" "}
+                {signedIn ? (
+                  <>Taking you to your saved ideas…</>
+                ) : (
+                  <>
+                    Verify your email{" "}
+                    <span className="font-medium text-foreground">{maskedEmail}</span> and sign in
+                    to claim them and draft your post.
+                  </>
+                )}
               </p>
             </div>
           </div>

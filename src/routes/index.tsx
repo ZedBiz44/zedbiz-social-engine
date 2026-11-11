@@ -1,7 +1,21 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { z } from "zod";
 import { SocialMediaMachine } from "@/components/social-media-machine";
 
+// The save / auth / claim / dashboard flow is rendered INSIDE this single
+// registered route as in-route views, driven by the validated ?view= and
+// ?claim= search params + the existing Cloud session. The prior /auth and
+// /_authenticated/ route files were never picked up by the router plugin, so
+// keeping them broke the build and the editor preview. ?view= drives which
+// panel renders; ?claim= carries the one-time claim token back after email
+// verification (even in another browser).
+const searchSchema = z.object({
+  view: z.enum(["public", "auth", "dashboard"]).optional(),
+  claim: z.string().min(8).max(200).optional(),
+});
+
 export const Route = createFileRoute("/")({
+  validateSearch: (search) => searchSchema.parse(search),
   component: SocialMediaMachine,
   head: () => ({
     meta: [
