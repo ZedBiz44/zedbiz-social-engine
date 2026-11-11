@@ -1,4 +1,4 @@
-// Server-only research orchestration using OpenRouter's openrouter:web_fetch.
+// Server-only research orchestration for website and description inputs.
 //
 // Reuses the same hardened OpenRouter call path: structured JSON, shape +
 // content validation, no logging of authorization or raw provider errors.
@@ -70,8 +70,9 @@ export async function researchTopicsServer(input: {
   // 1. Independently-verified page extraction via r.jina.ai (fixed origin,
   //    no app-side fetch of the visitor URL). On success, generate topics from
   //    the extracted page text using the proven plain text-generation route.
-  const extract = await extractPageText(input.website);
-  if (extract.ok) {
+  const hasDescription = description.length >= 8;
+  const extract = hasDescription ? null : await extractPageText(input.website);
+  if (extract?.ok) {
     if (!checkThrottle(k)) {
       return {
         source: "fallback",
@@ -110,26 +111,8 @@ export async function researchTopicsServer(input: {
     };
   }
 
-  // 2. Extraction failed. Distinguish a transport/backend failure (the reader
-  //    egress was blocked, timed out, or returned a non-JSON/empty payload)
-  //    from a genuine website-read failure (different host, no usable
-  //    content, invalid URL). On a backend failure we do NOT prompt for a
-  //    description — the backend is down, so the description path would fail
-  //    too. We ask the visitor to retry instead.
-  if (extract.kind === "backend-unavailable") {
-    return {
-      source: "fallback",
-      backendUnavailable: true,
-      topics: [],
-      note: "Preview backend unavailable — we couldn't reach the website reader. Please retry in a moment.",
-    };
-  }
-
-  // 3. invalid-url or website-unreadable: if the visitor already provided a
-  //    description, generate from it. Otherwise request a one-sentence
-  //    description. We never expose generic sample topics as clickable cards
-  //    on a failed live lookup.
-  if (description.length >= 8) {
+  // A supplied description can go directly to generation, even if the reader is down.
+  if (hasDescription) {
     if (!checkThrottle(k)) {
       return {
         source: "fallback",
@@ -164,14 +147,14 @@ export async function researchTopicsServer(input: {
     };
   }
 
-  // 4. Request the existing one-sentence description fallback. We never expose
+  // Request the one-sentence description after a failed lookup. We never expose
   //    generic sample topics as clickable cards on a failed live lookup.
   return {
     source: "fallback",
     needsDescription: true,
     topics: [],
     note:
-      extract.kind === "invalid-url"
+      extract?.kind === "invalid-url"
         ? "That website address doesn't look valid. Add a one-sentence business description and we'll suggest topics from that instead."
         : "We couldn't read that website. Add a one-sentence business description and we'll suggest topics from that instead.",
   };

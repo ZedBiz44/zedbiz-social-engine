@@ -40,14 +40,11 @@ export type ExtractFailure = {
   reason: string;
   /**
    * Why the read failed:
-   * - "backend-unavailable": the server-function transport / outbound reader
-   *   call itself could not complete (network error, redirect rejected,
-   *   timeout). Distinct from a specific website problem.
-   * - "website-unreadable": the request succeeded but the page had no usable
-   *   content, or the returned host did not match the requested host.
+   * - "website-unreadable": the reader failed or did not return usable content
+   *   from the requested website.
    * - "invalid-url": the submitted URL failed validation.
    */
-  kind: "backend-unavailable" | "website-unreadable" | "invalid-url";
+  kind: "website-unreadable" | "invalid-url";
 };
 
 export type ExtractSuccess = {
@@ -117,49 +114,36 @@ export async function extractPageText(rawWebsite: string): Promise<ExtractResult
       return {
         ok: false,
         reason: "Reader returned an error",
-        kind: "backend-unavailable" as const,
+        kind: "website-unreadable",
       };
     }
 
-    // Cap bytes read from the stream.
     const reader = res.body?.getReader();
     if (!reader) {
-      // Fallback: read as text (still bounded by MAX_EXTRACT_BYTES).
-      const raw = await res.text();
-      return parseJinaResponse(raw, cleanUrl, valResult.normalizedHost, valResult.normalizedDomain);
+      return { ok: false, reason: "Reader returned no body", kind: "website-unreadable" };
     }
 
     const decoder = new TextDecoder();
     let raw = "";
     let bytes = 0;
-    let done = false;
-    while (!done) {
-      const { value, done: rDone } = await reader.read();
-      done = rDone;
-      if (value) {
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
         bytes += value.byteLength;
         if (bytes > MAX_EXTRACT_BYTES) {
-          try {
-            reader.cancel();
-          } catch {
-            /* ignore */
-          }
-          break;
+          void reader.cancel().catch(() => {});
+          return { ok: false, reason: "Reader response was too large", kind: "website-unreadable" };
         }
-        raw += decoder.decode(value, { stream: !done });
+        raw += decoder.decode(value, { stream: true });
       }
+    } finally {
+      reader.releaseLock();
     }
     raw += decoder.decode();
 
     return parseJinaResponse(raw, cleanUrl, valResult.normalizedHost, valResult.normalizedDomain);
   } catch {
-    // The outbound reader call could not complete (network error, redirect
-    // rejected, or timeout). r.jina.ai is an external dependency; when it is
-    // unreachable the caller falls back to the business-description path
-    // (OpenRouter generation works independently of the reader). We still
-    // surface this as a website-read failure (needsDescription) rather than a
-    // backend-unavailable state, because the app's own server function is
-    // fine — only the external reader is down.
     return {
       ok: false,
       reason: "Reader request failed or timed out",
@@ -176,46 +160,32 @@ function parseJinaResponse(
   normalizedHost: string,
   normalizedDomain: string,
 ): ExtractResult {
-  // r.jina.ai (Accept: application/json) returns:
-  //   { code, status, data: { title, description, url, content, ... }, meta }
-  // Older/alt shapes may put content/text/title at the top level. Handle both.
-  let data: {
-    content?: unknown;
-    text?: unknown;
-    title?: unknown;
-    data?: { url?: unknown; content?: unknown; title?: unknown; text?: unknown };
-  } | null = null;
+  // Keep the content and reported source in the same response object.
+  type ReaderPage = { url?: unknown; content?: unknown; text?: unknown; title?: unknown };
+  let data: (ReaderPage & { data?: ReaderPage }) | null;
   try {
     data = JSON.parse(raw);
   } catch {
-    return { ok: false, reason: "Reader returned non-JSON", kind: "backend-unavailable" as const };
+    return { ok: false, reason: "Reader returned non-JSON", kind: "website-unreadable" };
   }
 
   if (!data || typeof data !== "object") {
-    return {
-      ok: false,
-      reason: "Reader returned an empty response",
-      kind: "backend-unavailable" as const,
-    };
+    return { ok: false, reason: "Reader returned an empty response", kind: "website-unreadable" };
   }
 
-  // Content may live at the top level (data.content / data.text) or nested
-  // under data.data.content (the current r.jina.ai JSON shape).
-  const contentRaw = data.content ?? data.text ?? data.data?.content ?? data.data?.text;
-  const content = typeof contentRaw === "string" ? contentRaw : "";
-
-  // Title may live at the top level or nested under data.data.title.
-  const titleRaw = data.title ?? data.data?.title;
-  const title = typeof titleRaw === "string" ? titleRaw : "";
-  const reportedUrl = String(data.data?.url ?? "").trim();
-
-  // Require data.url to match the input hostname with only www <-> apex equivalence.
+  const nested = data.data;
+  const payload = typeof (nested?.content ?? nested?.text) === "string" ? nested : data;
+  const content = payload?.content ?? payload?.text;
+  const title = typeof payload?.title === "string" ? payload.title : "";
+  const reportedUrl = typeof payload?.url === "string" ? payload.url.trim() : "";
   let reportedHost = "";
   try {
-    const u = new URL(reportedUrl.startsWith("http") ? reportedUrl : "https://" + reportedUrl);
-    reportedHost = u.hostname.toLowerCase();
+    const url = new URL(reportedUrl);
+    if (["http:", "https:"].includes(url.protocol) && !url.username && !url.password && !url.port) {
+      reportedHost = url.hostname;
+    }
   } catch {
-    /* leave empty */
+    // A missing or malformed source URL cannot verify the page.
   }
 
   const hostMatches =
@@ -232,7 +202,7 @@ function parseJinaResponse(
     };
   }
 
-  const text = content.trim();
+  const text = typeof content === "string" ? content.trim() : "";
   if (text.length < 60) {
     return {
       ok: false,
