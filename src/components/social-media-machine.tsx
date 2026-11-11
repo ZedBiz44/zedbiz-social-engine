@@ -89,9 +89,12 @@ export function SocialMediaMachine() {
     };
   }, [urlView, urlClaim]);
 
-  function goAuth(token: string) {
-    setClaimToken(token);
-    void navigate({ to: "/", search: { view: "auth", claim: token } });
+  function goAuth(token?: string | null) {
+    setClaimToken(token ?? null);
+    void navigate({
+      to: "/",
+      search: { view: "auth", ...(token ? { claim: token } : {}) },
+    });
   }
 
   function goDashboard(token?: string | null) {
@@ -264,7 +267,7 @@ export function SocialMediaMachine() {
   if (view === "auth") {
     return (
       <div className="min-h-screen bg-background text-foreground">
-        <Header />
+        <Header signedIn={signedIn} onOpenWork={() => goDashboard()} />
         <AuthPanel claimToken={claimToken} onSignedIn={(o) => goDashboard(o.claimToken)} />
         <SampleBanner />
       </div>
@@ -274,7 +277,7 @@ export function SocialMediaMachine() {
   if (view === "dashboard") {
     return (
       <div className="min-h-screen bg-background text-foreground">
-        <Header />
+        <Header signedIn={signedIn} onOpenWork={() => goDashboard()} />
         <OwnerDashboard claimToken={claimToken} onExit={goPublic} />
         <SampleBanner />
       </div>
@@ -283,7 +286,7 @@ export function SocialMediaMachine() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <Header />
+      <Header signedIn={signedIn} onOpenWork={() => goDashboard()} onSignIn={() => goAuth(null)} />
       <main className="mx-auto w-full max-w-3xl px-4 pb-24 pt-6 sm:pt-10">
         <ProgressBar step={step} />
 

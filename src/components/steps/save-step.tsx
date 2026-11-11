@@ -167,8 +167,9 @@ export function SaveStep({
               />
             </Field>
             <p className="text-xs text-muted-foreground">
-              We'll send a verification link. After you confirm, your ideas are saved to your
-              account. No spam — we use this only to save your work.
+              {signedIn
+                ? "You're signed in — your ideas will be saved straight to your account."
+                : "Already have an account? Sign in to save these ideas to it. New here? We'll send a verification link to confirm your email, then your ideas are saved to your account."}
             </p>
             {error && (
               <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -217,9 +218,9 @@ export function SaveStep({
                   <>Taking you to your saved ideas…</>
                 ) : (
                   <>
-                    Verify your email{" "}
-                    <span className="font-medium text-foreground">{maskedEmail}</span> and sign in
-                    to claim them and draft your post.
+                    If you already have an account, sign in to claim them. New here? Verify your
+                    email <span className="font-medium text-foreground">{maskedEmail}</span> and
+                    sign in to claim them and draft your post.
                   </>
                 )}
               </p>

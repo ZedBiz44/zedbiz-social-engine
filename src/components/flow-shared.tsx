@@ -1,7 +1,15 @@
 import { Check, Sparkles } from "lucide-react";
 import { STEP_LABELS, type Step } from "@/lib/flow-types";
 
-export function Header() {
+export function Header({
+  signedIn = false,
+  onOpenWork,
+  onSignIn,
+}: {
+  signedIn?: boolean;
+  onOpenWork?: () => void;
+  onSignIn?: () => void;
+} = {}) {
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-card/90 backdrop-blur">
       <div className="mx-auto flex h-14 w-full max-w-3xl items-center gap-2 px-4">
@@ -11,6 +19,25 @@ export function Header() {
         <div className="leading-tight">
           <p className="text-sm font-semibold text-foreground">Social Media Machine</p>
           <p className="text-[11px] text-muted-foreground">by ZedBiz</p>
+        </div>
+        <div className="ml-auto">
+          {signedIn ? (
+            <button
+              type="button"
+              onClick={onOpenWork}
+              className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-accent/30 sm:text-sm"
+            >
+              My saved work
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onSignIn}
+              className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 sm:text-sm"
+            >
+              Sign in
+            </button>
+          )}
         </div>
       </div>
     </header>
