@@ -71,6 +71,7 @@ export type Database = {
           id: string
           ideas: Json
           is_custom_topic: boolean
+          saved_set_id: string | null
           selected_idea_index: number
           topic: string
           website: string
@@ -87,6 +88,7 @@ export type Database = {
           id?: string
           ideas: Json
           is_custom_topic?: boolean
+          saved_set_id?: string | null
           selected_idea_index?: number
           topic: string
           website: string
@@ -103,11 +105,20 @@ export type Database = {
           id?: string
           ideas?: Json
           is_custom_topic?: boolean
+          saved_set_id?: string | null
           selected_idea_index?: number
           topic?: string
           website?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "pending_idea_claims_saved_set_id_fkey"
+            columns: ["saved_set_id"]
+            isOneToOne: false
+            referencedRelation: "saved_idea_sets"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       saved_idea_sets: {
         Row: {
@@ -153,6 +164,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      claim_and_save_ideas: {
+        Args: {
+          _claim_token_hash: string
+          _email_key: string
+          _user_id: string
+        }
+        Returns: {
+          reason: string
+          saved_set_id: string
+        }[]
+      }
       claim_pending_ideas: {
         Args: {
           _claim_token_hash: string
@@ -166,6 +188,17 @@ export type Database = {
         }[]
       }
       normalize_email: { Args: { _email: string }; Returns: string }
+      recover_unsaved_claim: {
+        Args: {
+          _claim_token_hash: string
+          _email_key: string
+          _user_id: string
+        }
+        Returns: {
+          reason: string
+          saved_set_id: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

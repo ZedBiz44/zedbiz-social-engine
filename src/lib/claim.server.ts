@@ -14,7 +14,6 @@
 // Never imported from client code (filename is *.server.ts).
 
 import {
-  constantTimeEqualHashes,
   hashClaimToken,
   maskEmail,
   newClaimToken,
@@ -42,10 +41,15 @@ export type PendingCreated = {
 };
 
 export type ClaimOutcome =
-  | { ok: true; ideas: PostIdea[]; selectedIdeaIndex: number }
+  | {
+      ok: true;
+      savedSetId: string;
+      ideas: PostIdea[];
+      selectedIdeaIndex: number;
+    }
   | {
       ok: false;
-      reason: "not_found" | "expired" | "email_mismatch" | "already_claimed";
+      reason: "not_found" | "expired" | "email_mismatch" | "already_claimed" | "save_failed";
     };
 
 /** Normalize an email to a stable key (lowercase, trim). */
@@ -104,10 +108,15 @@ export async function createPendingClaim(input: PendingInput): Promise<PendingCr
 }
 
 /**
- * Atomically claim a pending row using the one-time token + the signed-in
- * user's confirmed email. Verifies the caller's email matches the row's
- * email_key before claiming. Idempotent and expiring: a row already claimed
- * or past its expiry is not claimable.
+ * Atomically claim a pending row AND insert the saved idea set in a single
+ * transactional RPC. The RPC locks the pending row, checks expiry + the
+ * verified email, inserts the saved set, and only then marks the claim
+ * consumed (storing the saved set id). An insert failure rolls back the
+ * claim, so a retry can still succeed. A legitimate same-owner retry of an
+ * already-consumed claim returns the existing saved set id (idempotent).
+ *
+ * Identity (email + userId) comes from the verified JWT claims, not the
+ * browser. Pending records are never exposed.
  */
 export async function claimPendingIdeas(args: {
   claimToken: string;
@@ -118,50 +127,55 @@ export async function claimPendingIdeas(args: {
   const tokenHash = hashClaimToken(args.claimToken);
   const emailKey = normalizeEmailKey(args.confirmedEmail);
 
-  // Look up unclaimed, unexpired candidate rows by token hash.
-  const { data, error } = await supabaseAdmin
-    .from("pending_idea_claims")
-    .select("id, email_key, ideas, selected_idea_index, expires_at, claimed_at")
-    .eq("claim_token_hash", tokenHash)
-    .is("claimed_at", null)
-    .gt("expires_at", new Date().toISOString())
-    .limit(1);
-
-  if (error || !data || data.length === 0) {
-    // Either no row for that hash, or it was already claimed / expired.
-    return { ok: false, reason: "not_found" };
-  }
-
-  const row = data[0];
-  if (!row || !constantTimeEqualHashes(hashClaimToken(args.claimToken), tokenHash)) {
-    return { ok: false, reason: "not_found" };
-  }
-
-  // Verify the signed-in user's confirmed email matches the row's email_key.
-  if (row.email_key !== emailKey) {
-    return { ok: false, reason: "email_mismatch" };
-  }
-
-  // Atomic UPDATE ... RETURNING via the SECURITY DEFINER function. Passes the
-  // verified userId so the function never resolves a different account.
-  const { data: claimed, error: claimErr } = await supabaseAdmin.rpc("claim_pending_ideas", {
+  // Atomic claim + save. Returns { saved_set_id, reason }.
+  const { data, error } = await supabaseAdmin.rpc("claim_and_save_ideas", {
     _claim_token_hash: tokenHash,
     _email_key: emailKey,
     _user_id: args.userId,
   });
 
-  if (claimErr) return { ok: false, reason: "not_found" };
-  const resultRows = claimed as
-    { id: string; ideas: PostIdea[]; selected_idea_index: number }[] | null;
-  if (!resultRows || resultRows.length === 0) {
-    // Row was claimed concurrently between our read and the UPDATE.
-    return { ok: false, reason: "already_claimed" };
+  if (error || !data) {
+    return { ok: false, reason: "save_failed" };
   }
 
-  const claimed0 = resultRows[0]!;
+  const rows = data as unknown as { saved_set_id: string | null; reason: string }[] | null;
+  if (!rows || rows.length === 0) return { ok: false, reason: "save_failed" };
+  const result = rows[0]!;
+
+  if (result.reason !== "ok" || !result.saved_set_id) {
+    // Map the RPC reason to the public ClaimResult reason. The RPC never
+    // returns "email_mismatch" (a non-matching email yields "not_found"),
+    // but keep the mapping for completeness.
+    const reason = result.reason as ClaimOutcome extends { ok: false; reason: infer R } ? R : never;
+    return { ok: false, reason: (reason as string) === "expired" ? "expired" : "not_found" };
+  }
+
+  // The RPC inserted the saved set. Fetch the preserved ideas from the
+  // pending row (still readable by service_role) so the client can show
+  // them without an extra round-trip to saved_idea_sets.
+  const { data: pending } = await supabaseAdmin
+    .from("pending_idea_claims")
+    .select("ideas, selected_idea_index")
+    .eq("claim_token_hash", tokenHash)
+    .eq("email_key", emailKey)
+    .limit(1);
+
+  const row = pending?.[0] as { ideas: PostIdea[]; selected_idea_index: number } | undefined;
+  if (!row) {
+    // The saved set exists; we just couldn't read the ideas back. Still a
+    // success — the dashboard will load the set from saved_idea_sets.
+    return {
+      ok: true,
+      savedSetId: result.saved_set_id,
+      ideas: [],
+      selectedIdeaIndex: 0,
+    };
+  }
+
   return {
     ok: true,
-    ideas: claimed0.ideas,
-    selectedIdeaIndex: claimed0.selected_idea_index,
+    savedSetId: result.saved_set_id,
+    ideas: row.ideas,
+    selectedIdeaIndex: row.selected_idea_index,
   };
 }

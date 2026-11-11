@@ -55,19 +55,18 @@ export function OwnerDashboard({
 
   // Claim-after-sign-in: if a claim token is present, attempt to claim it once.
   // Works across browsers — the token travels in the URL, the verified email is
-  // read from the JWT server-side.
+  // read from the JWT server-side. The atomic RPC inserts the saved set and
+  // returns its id; we only show success when a real saved set id comes back,
+  // then refresh so the new set appears in the workspace.
   useEffect(() => {
     if (!claimToken) return;
     let cancelled = false;
     (async () => {
-      setClaimStatus("Claiming your saved ideas…");
+      setClaimStatus("Saving your ideas to your account…");
       try {
         const result = await fetchClaim({ data: { claimToken } });
         if (cancelled) return;
-        if (result.ok) {
-          setClaimStatus("Your ideas were saved to your account.");
-          await refresh();
-        } else {
+        if (!result.ok) {
           const map: Record<string, string> = {
             not_found:
               "We couldn't find that claim — it may have expired. Please save your ideas again.",
@@ -75,11 +74,29 @@ export function OwnerDashboard({
             email_mismatch:
               "That claim belongs to a different email. Sign in with the email you used to save.",
             already_claimed: "Those ideas were already claimed.",
+            save_failed:
+              "We couldn't save your ideas to your account. Please try again in a moment, or save your ideas again.",
           };
           setClaimStatus(map[result.reason] ?? "We couldn't claim your ideas.");
+        } else if (result.savedSetId) {
+          // Real saved set id returned → the insert succeeded. Refresh the
+          // workspace so the new set shows up, then mark the active one.
+          await refresh();
+          setActiveSetId(result.savedSetId);
+          setClaimStatus("Your ideas were saved to your account.");
+        } else {
+          // Defensive: ok without an id should not happen, but treat as a
+          // save failure rather than falsely claiming success.
+          setClaimStatus(
+            "We saved your claim but couldn't confirm the saved set. Please refresh, or save your ideas again.",
+          );
         }
       } catch {
-        if (!cancelled) setClaimStatus("We couldn't claim your ideas right now.");
+        if (!cancelled) {
+          setClaimStatus(
+            "We couldn't save your ideas right now. Please try again, or save your ideas again.",
+          );
+        }
       }
     })();
     return () => {

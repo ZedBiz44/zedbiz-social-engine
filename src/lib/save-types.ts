@@ -29,12 +29,14 @@ export type PendingCreateResult = PendingCreated | PendingCreateError;
 export type ClaimResult =
   | {
       ok: true;
+      /** The id of the saved_idea_sets row the atomic RPC inserted. */
+      savedSetId: string;
       ideas: PostIdea[];
       selectedIdeaIndex: number;
     }
   | {
       ok: false;
-      reason: "not_found" | "expired" | "email_mismatch" | "already_claimed";
+      reason: "not_found" | "expired" | "email_mismatch" | "already_claimed" | "save_failed";
     };
 
 /** A saved set of three ideas owned by a signed-in user. */
