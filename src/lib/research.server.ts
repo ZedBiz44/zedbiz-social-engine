@@ -9,9 +9,9 @@
 // Never imported from client code (filename is *.server.ts).
 
 import { CACHE_TTL_MS, OPENROUTER_KEY_ENV, THROTTLE_MS } from "@/lib/ai-config";
-import { generateIdeas, generateTopics, generateTopicsWithWebFetch } from "@/lib/openrouter.server";
+import { generateIdeas, generateTopics, generateTopicsFromPageText } from "@/lib/openrouter.server";
+import { extractPageText } from "@/lib/page-extract.server";
 import { GENERIC_TOPICS, buildGenericIdeas, normaliseWebsite } from "@/lib/sample-data";
-import { validatePublicWebsiteUrl } from "@/lib/url-validator.server";
 import type { IdeasResult, ResearchSource, TopicsResult } from "@/lib/research-types";
 
 // ---------------------------------------------------------------------------
@@ -67,23 +67,25 @@ export async function researchTopicsServer(input: {
     return result;
   }
 
-  // 1. Validate public website URL (security boundaries; no app-side fetch)
-  const valResult = validatePublicWebsiteUrl(input.website);
-  if (valResult.ok) {
+  // 1. Independently-verified page extraction via r.jina.ai (fixed origin,
+  //    no app-side fetch of the visitor URL). On success, generate topics from
+  //    the extracted page text using the proven plain text-generation route.
+  const extract = await extractPageText(input.website);
+  if (extract.ok) {
     if (!checkThrottle(k)) {
       return {
         source: "fallback",
-        topics: GENERIC_TOPICS,
+        needsDescription: true,
+        topics: [],
         note: "Too many requests — please wait a few seconds and try again.",
       };
     }
 
-    const liveOutput = await generateTopicsWithWebFetch(
+    const liveOutput = await generateTopicsFromPageText(
       apiKey,
       input.businessName,
-      valResult.url,
-      valResult.normalizedHost,
-      valResult.normalizedDomain,
+      extract.page.text,
+      extract.page.sourceUrl,
     );
 
     if (liveOutput) {
@@ -98,13 +100,17 @@ export async function researchTopicsServer(input: {
     }
   }
 
-  // 2. Web fetch failed, site inaccessible, or URL invalid:
-  // If visitor already provided a description, generate from description
+  // 2. Extraction or generation failed, or URL invalid:
+  //    If visitor already provided a description, generate from description.
+  //    Otherwise request a one-sentence description. We do NOT return generic
+  //    sample topics as clickable cards on a failed live lookup — the visitor
+  //    must use their description or enter their own topic.
   if (description.length >= 8) {
     if (!checkThrottle(k)) {
       return {
         source: "fallback",
-        topics: GENERIC_TOPICS,
+        needsDescription: true,
+        topics: [],
         note: "Too many requests — please wait a few seconds and try again.",
       };
     }
@@ -126,14 +132,15 @@ export async function researchTopicsServer(input: {
     }
   }
 
-  // 3. Request the existing one-sentence description fallback
+  // 3. Request the existing one-sentence description fallback. We never expose
+  //    generic sample topics as clickable cards on a failed live lookup.
   return {
     source: "fallback",
     needsDescription: true,
     topics: [],
-    note: valResult.ok
+    note: extract.ok
       ? "We couldn't read that website. Add a one-sentence business description and we'll suggest topics from that instead."
-      : valResult.reason,
+      : extract.reason,
   };
 }
 

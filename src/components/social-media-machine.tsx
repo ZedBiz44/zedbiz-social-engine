@@ -3,7 +3,6 @@ import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
   SAMPLE_BUSINESSES,
-  GENERIC_TOPICS,
   buildGenericIdeas,
   matchSampleBusiness,
   type PostIdea,
@@ -152,10 +151,13 @@ export function SocialMediaMachine() {
       const biz = SAMPLE_BUSINESSES.find((b) => b.domain === state.matchedDomain);
       return biz?.topics ?? [];
     }
+    // Live flow: show ONLY real topics from the server result. On a failed
+    // lookup (needsDescription / fallback with no topics) we show NO clickable
+    // topic cards — the visitor must use their description or enter their own.
     if (topicsResult?.topics && topicsResult.topics.length > 0) {
       return topicsResult.topics;
     }
-    return GENERIC_TOPICS;
+    return [];
   }, [state.matchedDomain, topicsResult]);
 
   const business = useMemo(
@@ -350,7 +352,7 @@ export function SocialMediaMachine() {
           />
         )}
       </main>
-      <SampleBanner />
+      {state.mode === "sample" && <SampleBanner />}
     </div>
   );
 }

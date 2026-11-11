@@ -28,15 +28,17 @@ export const THROTTLE_MS = 8000;
 /** How long a successful result is cached for de-duplication. */
 export const CACHE_TTL_MS = 5 * 60 * 1000;
 
-// --- Website fetch bounds (OpenRouter managed web_fetch tool) ---
-/** Bounded timeout for the managed web_fetch + topics request. */
+// --- OpenRouter request timeout (plain text generation) ---
+/** Bounded timeout for the OpenRouter topics/ideas request. */
 export const FETCH_TIMEOUT_MS = 25000;
-export const WEB_FETCH_MAX_CONTENT_TOKENS = 1800;
-export const WEB_FETCH_MAX_USES = 1;
-/**
- * OpenRouter web_fetch engine. "exa" is the managed search/fetch engine
- * (documented ~$0.001 per fetch) and is more reliable than the default
- * "openrouter" engine for reading a specific public page.
- */
-export const WEB_FETCH_ENGINE = "exa";
 export const WEBSITE_TEXT_CHARS = 6000;
+
+// --- Independently-verified page extraction via r.jina.ai ---
+/** Fixed reader origin used for page extraction (never the visitor URL). */
+export const JINA_ORIGIN = "https://r.jina.ai";
+/** Bounded timeout for the r.jina.ai reader request. */
+export const JINA_TIMEOUT_MS = 18000;
+/** Max bytes read from the reader response stream. */
+export const MAX_EXTRACT_BYTES = 200_000;
+/** Max characters of extracted page text passed to the model. */
+export const MAX_EXTRACT_TEXT_CHARS = 6000;
