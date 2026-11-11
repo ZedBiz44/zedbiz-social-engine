@@ -12,6 +12,8 @@ export function IdeasStep({
   onContinue,
   onBack,
   isLive,
+  showLiveBadge,
+  showDescriptionBadge,
   ideasPhase,
   ideasError,
 }: {
@@ -23,10 +25,14 @@ export function IdeasStep({
   onContinue: () => void;
   onBack: () => void;
   isLive: boolean;
+  showLiveBadge: boolean;
+  showDescriptionBadge: boolean;
   ideasPhase: "idle" | "loading" | "done";
   ideasError: string | null;
 }) {
   const loading = isLive && ideasPhase === "loading";
+  const isFallback =
+    isLive && !loading && ideasPhase === "done" && !showLiveBadge && !showDescriptionBadge;
 
   return (
     <section className="space-y-4">
@@ -45,10 +51,17 @@ export function IdeasStep({
             All three are shown below — review them before saving anything.
           </p>
         )}
-        {isLive && !loading && (
+        {/* Source badge — only when a real model request succeeded. */}
+        {!loading && (showLiveBadge || showDescriptionBadge) && (
           <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-accent/60 bg-accent/15 px-2.5 py-1 text-[11px] font-medium text-primary">
             <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-            Live research
+            {showLiveBadge ? "Live research" : "Based on your description"}
+          </span>
+        )}
+        {/* Sample suggestions label for fallback output. */}
+        {!loading && isFallback && ideas.length > 0 && (
+          <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+            Sample suggestions
           </span>
         )}
       </div>
@@ -65,7 +78,9 @@ export function IdeasStep({
           <div className="flex items-start gap-2.5">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
             <div>
-              <p className="text-sm font-medium text-foreground">Couldn't generate live ideas</p>
+              <p className="text-sm font-medium text-foreground">
+                Couldn't generate ideas right now
+              </p>
               <p className="mt-1 text-xs text-muted-foreground">{ideasError}</p>
             </div>
           </div>
@@ -120,7 +135,7 @@ export function IdeasStep({
             onClick={onContinue}
             className="w-full flex-1 rounded-lg bg-primary px-4 py-3.5 text-base font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
           >
-            Save my ideas &amp; draft a post
+            Save my ideas & draft a post
           </button>
         </div>
       )}

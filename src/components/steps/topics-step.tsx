@@ -16,6 +16,8 @@ export function TopicsStep({
   onDescChange,
   onBack,
   isLive,
+  showLiveBadge,
+  showDescriptionBadge,
   topicsPhase,
   topicsResult,
   topicsError,
@@ -32,6 +34,8 @@ export function TopicsStep({
   onDescChange: (v: string) => void;
   onBack: () => void;
   isLive: boolean;
+  showLiveBadge: boolean;
+  showDescriptionBadge: boolean;
   topicsPhase: "idle" | "loading" | "done";
   topicsResult: TopicsResult | null;
   topicsError: string | null;
@@ -44,6 +48,7 @@ export function TopicsStep({
     (topicsResult?.needsDescription ?? false) &&
     (topicsResult?.topics?.length ?? 0) === 0;
   const descriptionReady = state.businessDescription.trim().length > 0;
+  const isFallback = isLive && !loading && (topicsResult?.source === "fallback" || !!topicsError);
 
   return (
     <section className="space-y-4">
@@ -60,17 +65,24 @@ export function TopicsStep({
         <p className="mt-1.5 text-sm text-muted-foreground">
           {isLive
             ? loading
-              ? "Reading your website and drafting two business-specific topic ideas."
+              ? "Drafting two business-specific topic ideas from your description."
               : needsDescription
                 ? "No problem. Describe what your business does and we'll suggest topics from that instead."
                 : "Pick one to draft three post ideas, or enter your own topic."
             : "Pick one to draft three post ideas, or enter your own topic."}
         </p>
 
-        {isLive && !loading && (
+        {/* Source badge — only when a real model request succeeded. */}
+        {!loading && !needsDescription && (showLiveBadge || showDescriptionBadge) && (
           <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-accent/60 bg-accent/15 px-2.5 py-1 text-[11px] font-medium text-primary">
             <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-            Live research
+            {showLiveBadge ? "Live research" : "Based on your description"}
+          </span>
+        )}
+        {/* Sample suggestions label for fallback output. */}
+        {!loading && !needsDescription && isFallback && topics.length > 0 && (
+          <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+            Sample suggestions
           </span>
         )}
 
@@ -98,8 +110,8 @@ export function TopicsStep({
         )}
       </div>
 
-      {/* Setup / fallback / error notice (never raw provider errors) */}
-      {isLive && !loading && (topicsResult?.setup || topicsError) && (
+      {/* Setup / fallback / error notice (plain-language; never credentials) */}
+      {isLive && !loading && (topicsResult?.setup || topicsError || isFallback) && (
         <div className="rounded-2xl border border-accent/60 bg-accent/10 p-4">
           <div className="flex items-start gap-2.5">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
@@ -107,7 +119,9 @@ export function TopicsStep({
               <p className="text-sm font-medium text-foreground">
                 {topicsResult?.setup
                   ? "Live research isn't connected yet"
-                  : "Couldn't generate live topics"}
+                  : topicsError
+                    ? "Couldn't generate topics right now"
+                    : "Showing sample suggestions"}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
                 {topicsError ??
@@ -122,7 +136,7 @@ export function TopicsStep({
       {loading && (
         <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin text-primary" />
-          Researching your website…
+          Researching your business…
         </div>
       )}
 
@@ -149,7 +163,7 @@ export function TopicsStep({
             ))}
           </div>
 
-          {isLive && !needsDescription && (
+          {isLive && !needsDescription && (showLiveBadge || showDescriptionBadge) && (
             <div className="flex justify-end">
               <button
                 type="button"

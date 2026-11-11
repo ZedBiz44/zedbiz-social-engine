@@ -73,6 +73,9 @@ export function SocialMediaMachine() {
         data: {
           businessName: state.businessName,
           website: state.website,
+          ...(state.businessDescription.trim()
+            ? { description: state.businessDescription.trim() }
+            : {}),
         },
       });
       setTopicsResult(result);
@@ -130,6 +133,9 @@ export function SocialMediaMachine() {
           website: state.website,
           topic,
           isCustom,
+          ...(state.businessDescription.trim()
+            ? { description: state.businessDescription.trim() }
+            : {}),
         },
       });
       setIdeasResult(result);
@@ -153,8 +159,14 @@ export function SocialMediaMachine() {
     return buildGenericIdeas(state.businessDescription, state.selectedTopic);
   }, [state.selectedTopic, state.matchedDomain, business, ideasResult, state.businessDescription]);
 
-  const liveIdeasSource = ideasResult?.source === "live";
-  const liveTopicsSource = !state.matchedDomain && topicsResult?.source === "live";
+  const liveIdeasSource = ideasResult?.source === "live" || ideasResult?.source === "description";
+  // "Live research" badge is shown only when a real model request succeeded
+  // and was grounded in website text. Description-based results get their own
+  // "Based on your description" label; fallback/sample never show "Live".
+  const showLiveTopicsBadge = topicsResult?.source === "live";
+  const showLiveIdeasBadge = ideasResult?.source === "live";
+  const showDescTopicsBadge = topicsResult?.source === "description";
+  const showDescIdeasBadge = ideasResult?.source === "description";
 
   function copyIdea(idea: PostIdea, index: number) {
     const text = [
@@ -205,6 +217,8 @@ export function SocialMediaMachine() {
             onDescChange={(v) => patch({ businessDescription: v })}
             onBack={() => setStep("business")}
             isLive={!state.matchedDomain}
+            showLiveBadge={showLiveTopicsBadge}
+            showDescriptionBadge={showDescTopicsBadge}
             topicsPhase={topicsPhase}
             topicsResult={topicsResult}
             topicsError={topicsError}
@@ -221,7 +235,9 @@ export function SocialMediaMachine() {
             onCopy={copyIdea}
             onContinue={() => setStep("save")}
             onBack={() => setStep("topics")}
-            isLive={liveIdeasSource || (!state.matchedDomain && ideasPhase !== "idle")}
+            isLive={!state.matchedDomain}
+            showLiveBadge={showLiveIdeasBadge}
+            showDescriptionBadge={showDescIdeasBadge}
             ideasPhase={ideasPhase}
             ideasError={ideasError}
           />
