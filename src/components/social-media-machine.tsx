@@ -275,7 +275,6 @@ export function SocialMediaMachine() {
       <div className="min-h-screen bg-background text-foreground">
         <Header signedIn={signedIn} onOpenWork={() => goDashboard()} />
         <AuthPanel claimToken={claimToken} onSignedIn={(o) => goDashboard(o.claimToken)} />
-        <SampleBanner />
       </div>
     );
   }
@@ -285,7 +284,6 @@ export function SocialMediaMachine() {
       <div className="min-h-screen bg-background text-foreground">
         <Header signedIn={signedIn} onOpenWork={() => goDashboard()} />
         <OwnerDashboard claimToken={claimToken} onExit={goPublic} />
-        <SampleBanner />
       </div>
     );
   }

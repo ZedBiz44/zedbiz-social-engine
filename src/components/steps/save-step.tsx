@@ -118,7 +118,8 @@ export function SaveStep({
         <div className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
           <p className="text-sm font-semibold text-foreground">Choose an idea to draft</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            All three ideas are saved. Pick the one you want to turn into a post first.
+            All three ideas will be saved to your account. Pick the one you want to turn into a post
+            first.
           </p>
           <div className="mt-4 space-y-3">
             {ideas.map((idea, i) => (
