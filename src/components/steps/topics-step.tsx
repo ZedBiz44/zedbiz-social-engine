@@ -56,7 +56,7 @@ export function TopicsStep({
         <h2 className="text-lg font-bold text-foreground sm:text-xl">
           {isLive
             ? loading
-              ? "Researching topics for your business…"
+              ? "Reading your website…"
               : needsDescription
                 ? "We couldn't read that site — tell us in one sentence"
                 : `Two topics for ${state.businessName}`
@@ -65,7 +65,7 @@ export function TopicsStep({
         <p className="mt-1.5 text-sm text-muted-foreground">
           {isLive
             ? loading
-              ? "Drafting two business-specific topic ideas from your description."
+              ? "Fetching your website with managed web fetch, then drafting two business-specific topics."
               : needsDescription
                 ? "No problem. Describe what your business does and we'll suggest topics from that instead."
                 : "Pick one to draft three post ideas, or enter your own topic."
@@ -136,7 +136,7 @@ export function TopicsStep({
       {loading && (
         <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin text-primary" />
-          Researching your business…
+          Reading your website…
         </div>
       )}
 

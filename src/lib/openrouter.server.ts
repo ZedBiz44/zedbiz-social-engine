@@ -6,6 +6,7 @@
 
 import {
   AI_MODEL,
+  FETCH_TIMEOUT_MS,
   MAX_TOKENS_IDEAS,
   MAX_TOKENS_TOPICS,
   OPENROUTER_ENDPOINT,
@@ -53,7 +54,7 @@ async function callOpenRouter(
   tools?: unknown[],
 ): Promise<ORCallResult> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 35000);
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     const bodyObj: Record<string, unknown> = {
       model,
@@ -135,6 +136,13 @@ export async function generateTopicsWithWebFetch(
 
   const userPrompt = `Business name: ${businessName}\nTarget website: {"url": "${validatedUrl}", "domain": "${normalizedHost}"}\n\nINSTRUCTIONS:\n1. You MUST use the openrouter:web_fetch tool to fetch content from the target URL "${validatedUrl}". Do not fetch any other URL.\n2. Read the page content returned by the tool. Extract a short, factual business summary (1-2 sentences, 30-250 characters) describing what this business does or offers.\n3. Suggest exactly TWO distinct, business-specific content topics grounded in the fetched page content. Each topic needs a title (max 60 chars) and a blurb (max 140 chars).\n4. If the page cannot be fetched, returns an error, or is inaccessible, respond ONLY with {"failed": true, "reason": "could_not_fetch"}.\n\nReturn JSON shaped:\n{"topics":[{"title":string,"blurb":string},{"title":string,"blurb":string}],"businessSummary":string,"fetchedUrl":string}`;
 
+  // Allow both the exact host (e.g. www.zedbiz.com) and the apex domain so a
+  // managed fetch that follows a www <-> apex redirect still satisfies the
+  // same-host allowlist. No other hosts are permitted.
+  const allowedDomains = Array.from(
+    new Set([normalizedHost, normalizedDomain, "www." + normalizedDomain]),
+  ).filter((d) => d && !d.startsWith("www.www."));
+
   const tools = [
     {
       type: "openrouter:web_fetch",
@@ -142,7 +150,7 @@ export async function generateTopicsWithWebFetch(
         engine: WEB_FETCH_ENGINE,
         max_uses: WEB_FETCH_MAX_USES,
         max_content_tokens: WEB_FETCH_MAX_CONTENT_TOKENS,
-        allowed_domains: [normalizedHost],
+        allowed_domains: allowedDomains,
       },
     },
   ];
