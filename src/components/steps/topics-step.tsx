@@ -42,13 +42,23 @@ export function TopicsStep({
   onRetryTopics: () => void;
 }) {
   const loading = isLive && topicsPhase === "loading";
+  const backendUnavailable = isLive && !loading && !!topicsResult?.backendUnavailable;
   const needsDescription =
     isLive &&
     !state.matchedDomain &&
+    !backendUnavailable &&
     (topicsResult?.needsDescription ?? false) &&
     (topicsResult?.topics?.length ?? 0) === 0;
   const descriptionReady = state.businessDescription.trim().length > 0;
-  const isFallback = isLive && !loading && (topicsResult?.source === "fallback" || !!topicsError);
+  // Fallback with actual sample cards only happens in sample mode. In live mode
+  // a "fallback" source with no topics is an honest failure — never label it
+  // "Showing sample suggestions" because there are no sample cards to show.
+  const isFallback =
+    isLive &&
+    !loading &&
+    !backendUnavailable &&
+    (topicsResult?.source === "fallback" || !!topicsError);
+  const hasSampleCards = isFallback && topics.length > 0;
 
   return (
     <section className="space-y-4">
@@ -57,18 +67,22 @@ export function TopicsStep({
           {isLive
             ? loading
               ? "Reading your website…"
-              : needsDescription
-                ? "We couldn't read that site — tell us in one sentence"
-                : `Two topics for ${state.businessName}`
+              : backendUnavailable
+                ? "Preview backend unavailable"
+                : needsDescription
+                  ? "We couldn't read that site — tell us in one sentence"
+                  : `Two topics for ${state.businessName}`
             : `Two topics for ${business?.businessName ?? state.businessName}`}
         </h2>
         <p className="mt-1.5 text-sm text-muted-foreground">
           {isLive
             ? loading
-              ? "Fetching your website with managed web fetch, then drafting two business-specific topics."
-              : needsDescription
-                ? "No problem. Describe what your business does and we'll suggest topics from that instead."
-                : "Pick one to draft three post ideas, or enter your own topic."
+              ? "Reading your website, then drafting two business-specific topics."
+              : backendUnavailable
+                ? "The preview backend couldn't be reached. Your entries are saved — try again in a moment."
+                : needsDescription
+                  ? "No problem. Describe what your business does and we'll suggest topics from that instead."
+                  : "Pick one to draft three post ideas, or enter your own topic."
             : "Pick one to draft three post ideas, or enter your own topic."}
         </p>
 
@@ -111,27 +125,45 @@ export function TopicsStep({
       </div>
 
       {/* Setup / fallback / error notice (plain-language; never credentials) */}
-      {isLive && !loading && (topicsResult?.setup || topicsError || isFallback) && (
-        <div className="rounded-2xl border border-accent/60 bg-accent/10 p-4">
-          <div className="flex items-start gap-2.5">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-            <div>
-              <p className="text-sm font-medium text-foreground">
-                {topicsResult?.setup
-                  ? "Live research isn't connected yet"
-                  : topicsError
-                    ? "Couldn't generate topics right now"
-                    : "Showing sample suggestions"}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {topicsError ??
-                  topicsResult?.note ??
-                  "Showing sample-style topics so you can preview the full flow."}
-              </p>
+      {isLive &&
+        !loading &&
+        (topicsResult?.setup || backendUnavailable || topicsError || isFallback) && (
+          <div className="rounded-2xl border border-accent/60 bg-accent/10 p-4">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  {topicsResult?.setup
+                    ? "Live research isn't connected yet"
+                    : backendUnavailable
+                      ? "Preview backend unavailable"
+                      : topicsError
+                        ? "Couldn't generate topics right now"
+                        : hasSampleCards
+                          ? "Showing sample suggestions"
+                          : "We couldn't read that website"}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {topicsError ??
+                    topicsResult?.note ??
+                    (backendUnavailable
+                      ? "The preview backend couldn't be reached. Please retry in a moment."
+                      : "Add a one-sentence business description below, or enter your own topic.")}
+                </p>
+                {backendUnavailable && (
+                  <button
+                    type="button"
+                    onClick={onRetryTopics}
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Retry
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
       {loading && (
         <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">

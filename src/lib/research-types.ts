@@ -28,6 +28,13 @@ export type TopicsResult = {
   needsDescription?: boolean;
   /** When the OpenRouter key is not configured. */
   setup?: boolean;
+  /**
+   * When the server-side backend is unavailable (server-function transport
+   * failure, reader egress blocked, or timeout) — distinct from a specific
+   * website being unreadable. The UI hides Retry + description entry until
+   * the backend is available again.
+   */
+  backendUnavailable?: boolean;
   /** Human-readable note (setup message, fallback reason, throttle). Never raw errors. */
   note?: string;
 };

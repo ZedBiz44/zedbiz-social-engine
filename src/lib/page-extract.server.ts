@@ -38,6 +38,16 @@ export type ExtractedPage = {
 export type ExtractFailure = {
   ok: false;
   reason: string;
+  /**
+   * Why the read failed:
+   * - "backend-unavailable": the server-function transport / outbound reader
+   *   call itself could not complete (network error, redirect rejected,
+   *   timeout). Distinct from a specific website problem.
+   * - "website-unreadable": the request succeeded but the page had no usable
+   *   content, or the returned host did not match the requested host.
+   * - "invalid-url": the submitted URL failed validation.
+   */
+  kind: "backend-unavailable" | "website-unreadable" | "invalid-url";
 };
 
 export type ExtractSuccess = {
@@ -66,7 +76,7 @@ function looksLikeErrorPage(text: string, title: string): boolean {
 export async function extractPageText(rawWebsite: string): Promise<ExtractResult> {
   const valResult = validatePublicWebsiteUrl(rawWebsite);
   if (!valResult.ok) {
-    return { ok: false, reason: valResult.reason };
+    return { ok: false, reason: valResult.reason, kind: "invalid-url" as const };
   }
 
   // Re-normalize: strip query and fragment, keep path. r.jina.ai expects the
@@ -80,7 +90,7 @@ export async function extractPageText(rawWebsite: string): Promise<ExtractResult
       cleanUrl = cleanUrl.slice(0, -1);
     }
   } catch {
-    return { ok: false, reason: "Invalid URL format" };
+    return { ok: false, reason: "Invalid URL format", kind: "invalid-url" as const };
   }
 
   const target = `${JINA_ORIGIN}/${cleanUrl}`;
@@ -90,7 +100,10 @@ export async function extractPageText(rawWebsite: string): Promise<ExtractResult
   try {
     const res = await fetch(target, {
       method: "GET",
-      redirect: "error",
+      // "follow" lets the reader origin settle any 3xx on its own host; we
+      // still require data.url to match the requested hostname afterwards, so
+      // a redirect to an unrelated host is rejected by the host check.
+      redirect: "follow",
       signal: controller.signal,
       headers: {
         accept: "application/json",
@@ -99,7 +112,11 @@ export async function extractPageText(rawWebsite: string): Promise<ExtractResult
     });
 
     if (!res.ok) {
-      return { ok: false, reason: "Reader returned an error" };
+      return {
+        ok: false,
+        reason: "Reader returned an error",
+        kind: "backend-unavailable" as const,
+      };
     }
 
     // Cap bytes read from the stream.
@@ -134,7 +151,15 @@ export async function extractPageText(rawWebsite: string): Promise<ExtractResult
 
     return parseJinaResponse(raw, cleanUrl, valResult.normalizedHost, valResult.normalizedDomain);
   } catch {
-    return { ok: false, reason: "Reader request failed or timed out" };
+    // The outbound reader call itself could not complete (network error,
+    // redirect rejected, or timeout). This is a transport/backend problem,
+    // NOT a problem with the specific website — distinguish it so the UI can
+    // say "backend unavailable" instead of "couldn't read that site".
+    return {
+      ok: false,
+      reason: "Reader request failed or timed out",
+      kind: "backend-unavailable" as const,
+    };
   } finally {
     clearTimeout(timer);
   }
@@ -146,34 +171,38 @@ function parseJinaResponse(
   normalizedHost: string,
   normalizedDomain: string,
 ): ExtractResult {
+  // r.jina.ai (Accept: application/json) returns:
+  //   { code, status, data: { title, description, url, content, ... }, meta }
+  // Older/alt shapes may put content/text/title at the top level. Handle both.
   let data: {
     content?: unknown;
     text?: unknown;
     title?: unknown;
-    data?: { url?: unknown };
+    data?: { url?: unknown; content?: unknown; title?: unknown; text?: unknown };
   } | null = null;
   try {
     data = JSON.parse(raw);
   } catch {
-    // r.jina.ai with Accept: application/json returns JSON; if not, treat as failure.
-    return { ok: false, reason: "Reader returned non-JSON" };
+    return { ok: false, reason: "Reader returned non-JSON", kind: "backend-unavailable" as const };
   }
 
   if (!data || typeof data !== "object") {
-    return { ok: false, reason: "Reader returned an empty response" };
+    return {
+      ok: false,
+      reason: "Reader returned an empty response",
+      kind: "backend-unavailable" as const,
+    };
   }
 
-  // r.jina.ai JSON shape: { content | data: { content }, title, data: { url } }
-  const contentRaw = data.content ?? data.text;
-  const content =
-    typeof contentRaw === "string"
-      ? contentRaw
-      : typeof (data as { data?: { content?: unknown } }).data?.content === "string"
-        ? (data as { data: { content: string } }).data.content
-        : "";
+  // Content may live at the top level (data.content / data.text) or nested
+  // under data.data.content (the current r.jina.ai JSON shape).
+  const contentRaw = data.content ?? data.text ?? data.data?.content ?? data.data?.text;
+  const content = typeof contentRaw === "string" ? contentRaw : "";
 
-  const title = typeof data.title === "string" ? data.title : "";
-  const reportedUrl = String((data as { data?: { url?: unknown } }).data?.url ?? "").trim();
+  // Title may live at the top level or nested under data.data.title.
+  const titleRaw = data.title ?? data.data?.title;
+  const title = typeof titleRaw === "string" ? titleRaw : "";
+  const reportedUrl = String(data.data?.url ?? "").trim();
 
   // Require data.url to match the input hostname with only www <-> apex equivalence.
   let reportedHost = "";
@@ -191,16 +220,28 @@ function parseJinaResponse(
     (normalizedHost === "www." + normalizedDomain && reportedHost === normalizedDomain);
 
   if (!hostMatches) {
-    return { ok: false, reason: "Reader returned a different host" };
+    return {
+      ok: false,
+      reason: "Reader returned a different host",
+      kind: "website-unreadable" as const,
+    };
   }
 
   const text = content.trim();
   if (text.length < 60) {
-    return { ok: false, reason: "Reader returned no usable content" };
+    return {
+      ok: false,
+      reason: "Reader returned no usable content",
+      kind: "website-unreadable" as const,
+    };
   }
 
   if (looksLikeErrorPage(text, title)) {
-    return { ok: false, reason: "Reader returned an error page" };
+    return {
+      ok: false,
+      reason: "Reader returned an error page",
+      kind: "website-unreadable" as const,
+    };
   }
 
   const page: ExtractedPage = {

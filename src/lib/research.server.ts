@@ -98,13 +98,37 @@ export async function researchTopicsServer(input: {
       topicCache.set(k, { at: Date.now(), result });
       return result;
     }
+
+    // Extraction succeeded but generation failed. That is a backend/model
+    // problem, not a website-read problem — surface it honestly without
+    // implying the specific website was unreadable.
+    return {
+      source: "fallback",
+      backendUnavailable: true,
+      topics: [],
+      note: "We read the page but couldn't generate topics right now. Please retry in a moment.",
+    };
   }
 
-  // 2. Extraction or generation failed, or URL invalid:
-  //    If visitor already provided a description, generate from description.
-  //    Otherwise request a one-sentence description. We do NOT return generic
-  //    sample topics as clickable cards on a failed live lookup — the visitor
-  //    must use their description or enter their own topic.
+  // 2. Extraction failed. Distinguish a transport/backend failure (the reader
+  //    egress was blocked, timed out, or returned a non-JSON/empty payload)
+  //    from a genuine website-read failure (different host, no usable
+  //    content, invalid URL). On a backend failure we do NOT prompt for a
+  //    description — the backend is down, so the description path would fail
+  //    too. We ask the visitor to retry instead.
+  if (extract.kind === "backend-unavailable") {
+    return {
+      source: "fallback",
+      backendUnavailable: true,
+      topics: [],
+      note: "Preview backend unavailable — we couldn't reach the website reader. Please retry in a moment.",
+    };
+  }
+
+  // 3. invalid-url or website-unreadable: if the visitor already provided a
+  //    description, generate from it. Otherwise request a one-sentence
+  //    description. We never expose generic sample topics as clickable cards
+  //    on a failed live lookup.
   if (description.length >= 8) {
     if (!checkThrottle(k)) {
       return {
@@ -130,17 +154,26 @@ export async function researchTopicsServer(input: {
       topicCache.set(k, { at: Date.now(), result });
       return result;
     }
+
+    // Description generation failed — backend/model problem.
+    return {
+      source: "fallback",
+      backendUnavailable: true,
+      topics: [],
+      note: "We couldn't generate topics from your description right now. Please retry in a moment.",
+    };
   }
 
-  // 3. Request the existing one-sentence description fallback. We never expose
+  // 4. Request the existing one-sentence description fallback. We never expose
   //    generic sample topics as clickable cards on a failed live lookup.
   return {
     source: "fallback",
     needsDescription: true,
     topics: [],
-    note: extract.ok
-      ? "We couldn't read that website. Add a one-sentence business description and we'll suggest topics from that instead."
-      : extract.reason,
+    note:
+      extract.kind === "invalid-url"
+        ? "That website address doesn't look valid. Add a one-sentence business description and we'll suggest topics from that instead."
+        : "We couldn't read that website. Add a one-sentence business description and we'll suggest topics from that instead.",
   };
 }
 
